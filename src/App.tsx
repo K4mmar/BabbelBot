@@ -11,7 +11,7 @@ import { MiniCaseScreen } from './components/MiniCaseScreen';
 import { getAIResponseStream, getInitialMessageStream, getConcludingMessageStream, getTechniqueFeedback, getHulpvraagFeedback } from './services/geminiService';
 import { saveReport } from './services/storageService';
 import type { Message, Settings, TrainingLevel, View, LSDTrainingStep, TechniqueFeedback, SkillAssessmentLevel } from './types';
-import { TechniqueTrainerOverview, LSDMethodOverview, FullConversationStarter } from './components/TrainingOverviews';
+import { TechniqueTrainerOverview, LSDMethodOverview, FullConversationStarter } from './components/ModuleOverviews';
 import { PhoneFrame } from './components/PhoneFrame';
 import { CheckCircleIcon, ChevronDownIcon } from './components/IconComponents';
 import { ModuleContainer } from './components/ModuleContainer';

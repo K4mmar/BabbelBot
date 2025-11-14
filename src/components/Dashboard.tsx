@@ -177,7 +177,7 @@ export const Dashboard: React.FC = () => {
     const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
     useEffect(() => {
-        const storageKey1 = `techniqueTrainerProgress_${userName}_${userRole}`;
+        const storageKey1 = `techniqueDrillProgress_${userName}_${userRole}`;
         const savedProgress1 = localStorage.getItem(storageKey1);
         if (savedProgress1) setProgress1(JSON.parse(savedProgress1));
 

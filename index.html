@@ -9,113 +9,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Slab:wght@400;700;800;900&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Roboto', 'sans-serif'],
-              serif: ['Roboto Slab', 'serif'],
-            },
-            colors: {
-              'primary-green': {
-                DEFAULT: '#45b97c',
-                'light': '#e0f3ea',
-                'dark': '#3a9a69',
-              },
-              'accent-lime': '#b1d249',
-              'accent-yellow-green': {
-                DEFAULT: '#d5e05b',
-                'light': '#f8fae8',
-              },
-              'warm-gray': {
-                50: '#f9f9f8',
-                100: '#f3f3f1',
-                200: '#e8e8e5',
-                300: '#d9d9d3',
-                400: '#b0b0a9',
-                500: '#8a8a80',
-                600: '#6f6f66',
-                700: '#5a5a54',
-                800: '#4a4a45',
-                900: '#3e3e3a',
-              },
-            },
-            borderRadius: {
-              'xl': '1rem',
-              '2xl': '1.5rem',
-            },
-             animation: {
-              'fade-in': 'fadeIn 0.5s ease-out',
-              'fade-in-fast': 'fadeIn 0.3s ease-out',
-              'slide-in-up': 'slideInUp 0.5s cubic-bezier(0.25, 1, 0.5, 1)',
-            },
-            keyframes: {
-              fadeIn: {
-                '0%': { opacity: 0 },
-                '100%': { opacity: 1 },
-              },
-              slideInUp: {
-                  '0%': { opacity: 0, transform: 'translateY(20px)' },
-                  '100%': { opacity: 1, transform: 'translateY(0)' },
-              },
-            }
-          },
-        },
-      }
-    </script>
-    <style type="text/tailwindcss">
-        @layer base {
-            h1, h2, h3, h4, h5, h6 {
-                @apply font-serif;
-            }
-            body {
-                @apply font-sans bg-warm-gray-50 text-warm-gray-800;
-                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23d5e05b' fill-opacity='0.15'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-            }
-        }
-        @layer components {
-            .report-content h2 {
-                @apply font-serif text-2xl font-bold text-primary-green-dark border-b border-warm-gray-200 pb-2 mt-6 mb-4;
-            }
-            .report-content h2:first-of-type {
-                @apply mt-0;
-            }
-            .report-content h3 {
-                @apply font-serif text-xl font-semibold text-warm-gray-800 mt-6 mb-3;
-            }
-            .report-content p {
-                @apply my-4 leading-relaxed text-warm-gray-700;
-            }
-            .report-content ul {
-                @apply my-4 ml-5 list-disc space-y-2 text-warm-gray-700;
-            }
-            .report-content li::marker {
-                @apply text-primary-green;
-            }
-            .report-content blockquote {
-                @apply my-4 border-l-4 border-accent-lime bg-accent-yellow-green-light text-warm-gray-700 rounded-r-lg not-italic p-4;
-            }
-            .report-content strong {
-                @apply text-warm-gray-900 font-semibold;
-            }
-        }
-    </style>
+    
+    <link rel="stylesheet" href="/src/index.css">
   <script type="importmap">
 {
   "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0"
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "vite": "https://aistudiocdn.com/vite@^7.2.2",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ import { ChatScreen } from './components/ChatScreen';
 import { InstructionsPanel } from './components/InstructionsPanel';
 import { DynamicCoachingPanel } from './components/DynamicCoachingPanel';
 import { EndScreen } from './components/EndScreen';
-import { TechniqueTrainer } from './components/TechniqueTrainer';
+import { TechniqueDrill } from './components/TechniqueDrill';
 import { TeacherSettingsPanel } from './components/TeacherSettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { MiniCaseScreen } from './components/MiniCaseScreen';
@@ -316,7 +316,7 @@ const App: React.FC = () => {
                     description="Oefen elke gespreksvaardigheid stapsgewijs."
                     onBack={state.activeTechniqueLevel ? () => dispatch({ type: 'NAVIGATE', payload: 'onderdeel1' }) : undefined}
                 >
-                    {state.activeTechniqueLevel ? <TechniqueTrainer /> : <TechniqueTrainerOverview />}
+                    {state.activeTechniqueLevel ? <TechniqueDrill /> : <TechniqueTrainerOverview />}
                 </ModuleContainer>
             );
         case 'onderdeel2':

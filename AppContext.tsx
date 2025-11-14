@@ -1,6 +1,5 @@
-
 import React, { createContext, useReducer, useContext, ReactNode } from 'react';
-import type { View, Settings, Message, TechniqueFeedback, TrainingLevel, LSDTrainingStep } from './types';
+import type { View, Settings, Message, TechniqueFeedback, TrainingLevel, LSDTrainingStep, StructuredReportData } from './types';
 
 // 1. STATE SHAPE
 export interface AppState {
@@ -21,6 +20,8 @@ export interface AppState {
   instantFeedback: TechniqueFeedback | null;
   activeTechniqueLevel: TrainingLevel | null;
   activeLSDStep: LSDTrainingStep | null;
+  structuredReportData: StructuredReportData | null;
+  isConcludingPhase: boolean;
 }
 
 // 2. ACTIONS
@@ -41,7 +42,9 @@ export type Action =
   | { type: 'SET_USER_TYPING'; payload: boolean }
   | { type: 'SET_PROGRESS'; payload: number }
   | { type: 'SET_TURN_COUNT'; payload: number }
-  | { type: 'SET_FINAL_REPORT'; payload: string | null };
+  | { type: 'SET_FINAL_REPORT'; payload: string | null }
+  | { type: 'SET_STRUCTURED_REPORT'; payload: StructuredReportData }
+  | { type: 'START_CONCLUDING_PHASE' };
 
 // 3. INITIAL STATE
 const initialState: AppState = {
@@ -62,6 +65,8 @@ const initialState: AppState = {
   instantFeedback: null,
   activeTechniqueLevel: null,
   activeLSDStep: null,
+  structuredReportData: null,
+  isConcludingPhase: false,
 };
 
 const clientNames = ["Alex", "Sam", "Chris", "Jamie", "Robin"];
@@ -90,6 +95,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         activeTechniqueLevel: null,
         activeLSDStep: null,
         settings: null,
+        structuredReportData: null,
       };
     case 'START_TECHNIQUE_LEVEL':
         return { ...state, activeTechniqueLevel: action.payload, clientName: getRandomClientName() };
@@ -112,6 +118,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
             finalReport: null,
             isLoading: true,
             clientName: getRandomClientName(),
+            isConcludingPhase: false,
         };
     case 'SET_MESSAGES':
         return { ...state, messages: action.payload };
@@ -138,6 +145,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, turnCount: action.payload };
     case 'SET_FINAL_REPORT':
         return { ...state, finalReport: action.payload, currentView: 'hulpvraag_report' };
+    case 'SET_STRUCTURED_REPORT':
+        return { ...state, structuredReportData: action.payload, currentView: 'test_report' };
+    case 'START_CONCLUDING_PHASE':
+        return { ...state, isConcludingPhase: true };
     default:
       return state;
   }

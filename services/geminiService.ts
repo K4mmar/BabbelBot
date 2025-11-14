@@ -1,5 +1,7 @@
 
 
+
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
 import { getFrameworks, getReports } from './reportService';
@@ -138,7 +140,7 @@ Cliënt zei: "${clientStatement}"
 Student antwoordde: "${studentResponse}"
 Jouw taak is om de reactie van de student te beoordelen op basis van het volgende kader:
 ${customFramework}
-Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en korte, concrete feedback.
+Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. De feedback moet een volledige beoordeling zijn op basis van het kader, maar houd het beknopt, maximaal twee alinea's.
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
     try {
@@ -170,21 +172,32 @@ export const getHulpvraagFeedback = async (messages: Message[], settings: Settin
 Context:
 - Werkveld: "${settings.field}"
 - Casus: "${settings.case}"
-- Taak Student: Verhelder de hulpvraag binnen 10 beurten.
+- Taak Student: Verhelder de hulpvraag.
 
 Conversatie:
 ${chatHistory}
 
-Jouw taak: Genereer een uitgebreid rapport in Markdown-formaat voor de student. Gebruik het volgende kader:
+Jouw taak: Genereer een uitgebreid rapport in HTML-formaat voor de student. Gebruik het volgende kader:
 ${customFramework}
 
-Het rapport moet de volgende secties bevatten:
-- **Samenvatting van het gesprek:** Wat is er besproken?
-- **Analyse van de hulpvraagverheldering:** Is de student tot de kern gekomen? Wat is de (vermoedelijke) hulpvraag?
-- **Toepassing van gesprekstechnieken:** Analyseer het gebruik van open vragen, parafrases, gevoelsreflecties en samenvattingen. Geef concrete voorbeelden uit de chat.
-- **Sterke punten:** Wat ging er goed?
-- **Verbeterpunten:** Wat kan de volgende keer beter? Geef concrete tips.
-- **Eindconclusie:** Een algehele beoordeling van het gesprek.`;
+Gebruik de volgende HTML-tags voor de opmaak:
+- Gebruik <h2> voor de titels van de secties.
+- Gebruik <p> voor paragrafen.
+- Gebruik <strong> voor belangrijke termen (vetgedrukt).
+- Gebruik <ul> en <li> voor lijsten met opsommingstekens.
+- Gebruik <blockquote> voor citaten uit het gesprek.
+
+Speciale aandacht voor de laatste boodschap van de student: Als dit een samenvattende check van de hulpvraag is, beoordeel dan expliciet of deze samenvatting de kern van het probleem correct en volledig omvat in de sectie 'Analyse van de hulpvraagverheldering'.
+
+Het rapport moet de volgende secties bevatten (gebruik <h2>-tags voor de titels):
+- Samenvatting van het gesprek
+- Analyse van de hulpvraagverheldering
+- Toepassing van gesprekstechnieken
+- Sterke punten
+- Verbeterpunten
+- Eindconclusie
+
+BELANGRIJK: Begin je antwoord direct met de eerste HTML-tag (<h2>). Voeg GEEN inleidende zinnen, uitleg of markdown-codeblokken (zoals \`\`\`html) toe. Je antwoord moet uitsluitend pure HTML-code zijn.`;
     
     try {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
@@ -192,16 +205,38 @@ Het rapport moet de volgende secties bevatten:
             contents: prompt,
             config: { temperature: 0.6 }
         }));
-        return response.text;
+
+        let reportHtml = response.text.trim();
+
+        // Strip any leading text and markdown specifier before the first HTML tag.
+        const firstTagIndex = reportHtml.indexOf('<');
+        if (firstTagIndex > 0) {
+            reportHtml = reportHtml.substring(firstTagIndex);
+        }
+
+        // Strip any trailing markdown specifier.
+        if (reportHtml.endsWith('```')) {
+            reportHtml = reportHtml.slice(0, -3).trim();
+        }
+        
+        return reportHtml;
+
     } catch (error) {
         console.error("Error generating hulpvraag feedback report:", error);
-        return "## Fout\n\nEr is een fout opgetreden bij het genereren van het rapport. Probeer het later opnieuw.";
+        return "<h2>Fout</h2><p>Er is een fout opgetreden bij het genereren van het rapport. Probeer het later opnieuw.</p>";
     }
 };
 
 export async function getChallengeBatch(skill: string, count: number): Promise<string[]> {
     const model = 'gemini-2.5-flash';
-    const prompt = `Genereer ${count} verschillende, korte en realistische uitspraken van een cliënt in een Social Work context. Deze uitspraken moeten een student uitdagen om de vaardigheid "${skill}" toe te passen. Geef alleen een JSON-array met strings terug. Voorbeeld: ["uitspraak 1", "uitspraak 2"]`;
+    let prompt: string;
+
+    if (skill === "Samenvatten") {
+        prompt = `Genereer ${count} verschillende, korte verhalen van een cliënt in een Social Work context. Elk verhaal moet 3-5 zinnen lang zijn en een duidelijk dilemma of probleem beschrijven. Het moet een onderliggend gevoel suggereren (zoals frustratie, onmacht of verdriet) en eindigen op een manier die een student uitnodigt om de kern samen te vatten. Het moet klinken als een authentiek fragment uit een gesprek. Geef alleen een JSON-array met strings terug.`;
+    } else {
+        prompt = `Genereer ${count} verschillende, korte en realistische uitspraken van een cliënt in een Social Work context. Deze uitspraken moeten een student uitdagen om de vaardigheid "${skill}" toe te passen. Geef alleen een JSON-array met strings terug. Voorbeeld: ["uitspraak 1", "uitspraak 2"]`;
+    }
+
     try {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
             model,
@@ -410,9 +445,9 @@ Student antwoordde: "${ans.studentResponse}"
 
 export async function getLSDComponentFeedback(component: 'L' | 'S' | 'D', clientStatement: string, studentResponse: string): Promise<TechniqueFeedback> {
     const skillMap = {
-        'L': 'Actief luisteren',
+        'L': 'Luister-signaal',
         'S': 'Samenvatten',
-        'D': 'Open vragen stellen'
+        'D': 'Doorvragen'
     };
     const skill = skillMap[component];
     const framework = getFrameworks()[skill];
@@ -421,9 +456,9 @@ export async function getLSDComponentFeedback(component: 'L' | 'S' | 'D', client
     if (component === 'L') {
         instruction = 'Beoordeel of dit een kort, neutraal en bevestigend luister-signaal is.';
     } else if (component === 'S') {
-        instruction = `Beoordeel of dit een goede, beknopte samenvatting is.`;
+        instruction = `Beoordeel of dit een goede, beknopte samenvatting is die de kern van de boodschap weergeeft.`;
     } else {
-        instruction = `Beoordeel of dit een goede, open en verdiepende vraag is.`;
+        instruction = `Beoordeel of dit een goede, open en verdiepende vraag is die logisch volgt op de boodschap van de cliënt.`;
     }
 
     const prompt = `De student oefent de LSD-deelvaardigheid "${skill}".
@@ -431,6 +466,7 @@ Cliënt zei: "${clientStatement}"
 Student antwoordde: "${studentResponse}"
 Jouw taak: ${instruction} Gebruik dit kader:
 ${framework}
+Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. De feedback moet een volledige beoordeling zijn op basis van het kader, maar houd het beknopt, maximaal twee alinea's.
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
     try {

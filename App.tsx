@@ -1,5 +1,3 @@
-
-
 import React, { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatScreen } from './components/ChatScreen';
@@ -22,6 +20,7 @@ import { AboutScreen } from './components/AboutScreen';
 import { SKILL_INSTRUCTIONS } from './constants';
 import { MobileWarning } from './components/MobileWarning';
 import { useAppContext } from './AppContext';
+import { TestReportScreen } from './components/TestReportScreen';
 
 // Simple unique ID generator
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -60,7 +59,7 @@ const Accordion: React.FC<{
 const assessmentStyles: { [key in SkillAssessmentLevel]: { container: string; text: string; icon: string } } = {
     "Goed": { container: 'bg-primary-green-light border-primary-green', text: 'text-primary-green-dark', icon: 'text-primary-green' },
     "Voldoende": { container: 'bg-amber-50 border-amber-400', text: 'text-amber-800', icon: 'text-amber-500' },
-    "Onvoldoende": { container: 'bg-red-50 border-red-400', text: 'text-red-800', icon: 'text-red-500' }
+    "Onvoldoende": { container: 'bg-red-50 border-red-400', text: 'text-red-800', icon: 'text-red-800' }
 };
 
 const TrainingChatContent: React.FC = () => {
@@ -128,8 +127,9 @@ const TrainingChatContent: React.FC = () => {
 
 const App: React.FC = () => {
   const { state, dispatch } = useAppContext();
-  const { currentView, settings, messages, turnCount, progressCount, goalTotal, userKey, finalReport } = state;
+  const { currentView, settings, messages, turnCount, progressCount, goalTotal, userKey, finalReport, isConcludingPhase } = state;
   const [isMobile, setIsMobile] = useState(false);
+  const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(false);
  
   useEffect(() => {
     const checkIsMobile = () => {
@@ -187,23 +187,29 @@ const App: React.FC = () => {
         text: text,
         timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
     };
-    dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
-    dispatch({ type: 'SET_USER_TYPING', payload: false });
-    dispatch({ type: 'SET_LOADING', payload: true });
-
-    const messagesWithUser = [...messages, userMessage];
 
     if (settings.skill === "Hulpvraag Verhelderen") {
-        const newTurnCount = turnCount + 1;
-        dispatch({ type: 'SET_TURN_COUNT', payload: newTurnCount });
-
-        if (newTurnCount >= 10) {
-            const report = await getHulpvraagFeedback(messagesWithUser, settings);
+        // This is the final, concluding message. Generate report and end.
+        if (isConcludingPhase) {
+            dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+            dispatch({ type: 'SET_LOADING', payload: true });
+            const finalMessages = [...messages, userMessage];
+            const report = await getHulpvraagFeedback(finalMessages, settings);
             saveReport(userKey, 'onderdeel3', `Gesprek: ${settings.case}`, report);
             dispatch({ type: 'SET_FINAL_REPORT', payload: report });
             dispatch({ type: 'SET_LOADING', payload: false });
             return;
         }
+
+        // This is a normal turn in the conversation.
+        dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+        dispatch({ type: 'SET_USER_TYPING', payload: false });
+        dispatch({ type: 'SET_LOADING', payload: true });
+        
+        const newTurnCount = turnCount + 1;
+        dispatch({ type: 'SET_TURN_COUNT', payload: newTurnCount });
+
+        const messagesWithUser = [...messages, userMessage];
 
         const aiMessage: Message = {
             id: generateId(),
@@ -217,12 +223,22 @@ const App: React.FC = () => {
         for await (const chunk of stream) {
             dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
         }
+        
+        // After AI responds to the 10th message, start the concluding phase.
+        if (newTurnCount >= 10) {
+            dispatch({ type: 'START_CONCLUDING_PHASE' });
+        }
+        
         dispatch({ type: 'SET_LOADING', payload: false });
         return;
     }
 
     // --- Original training chat logic ---
+    dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+    dispatch({ type: 'SET_USER_TYPING', payload: false });
+    dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_COACH_LOADING', payload: true });
+    
     const lastClientMsg = messages.filter(m => m.sender === 'client').slice(-1)[0];
     const feedback = await getTechniqueFeedback(settings.skill, lastClientMsg.text, text);
     dispatch({ type: 'SET_INSTANT_FEEDBACK', payload: feedback });
@@ -264,7 +280,7 @@ const App: React.FC = () => {
         };
         dispatch({ type: 'ADD_MESSAGE', payload: aiMessage });
 
-        const stream = getAIResponseStream(messagesWithUser, settings);
+        const stream = getAIResponseStream([...messages, userMessage], settings);
         for await (const chunk of stream) {
             dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
         }
@@ -281,7 +297,7 @@ const App: React.FC = () => {
         dispatch({ type: 'SET_LOADING', payload: false });
         dispatch({ type: 'SET_INSTANT_FEEDBACK', payload: null });
     }
-  }, [messages, settings, goalTotal, progressCount, turnCount, userKey, dispatch]);
+  }, [messages, settings, goalTotal, progressCount, turnCount, userKey, isConcludingPhase, dispatch]);
   
   const handleUserTyping = (isTyping: boolean) => {
     dispatch({ type: 'SET_USER_TYPING', payload: isTyping });
@@ -304,7 +320,7 @@ const App: React.FC = () => {
                 </ModuleContainer>
             );
         case 'onderdeel2':
-            return (
+             return (
                  <ModuleContainer
                     title="Onderdeel 2: De LSD-methode"
                     description={state.activeLSDStep ? `Oefening: ${state.activeLSDStep.title}` : "Pas de kern van actief luisteren toe in realistische scenario's."}
@@ -388,16 +404,44 @@ const App: React.FC = () => {
                         <DynamicCoachingPanel
                             title="Missie: Hulpvraag Verhelderen"
                             progress={
-                                <>
-                                    <p className="font-semibold text-warm-gray-500 text-sm">Jouw beurt</p>
-                                    <p className="text-2xl font-bold text-primary-green">{turnCount + 1} / 10</p>
-                                </>
+                                state.isConcludingPhase ? (
+                                    <>
+                                        <p className="font-semibold text-warm-gray-500 text-sm">Status</p>
+                                        <p className="text-2xl font-bold text-primary-green">Afronding</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="font-semibold text-warm-gray-500 text-sm">Jouw beurt</p>
+                                        <p className="text-2xl font-bold text-primary-green">{turnCount + 1} / 10</p>
+                                    </>
+                                )
                             }
                         >
-                             <div className="space-y-4">
-                                <h2 className="font-semibold text-warm-gray-700">Jouw Opdracht</h2>
-                                <p className="text-warm-gray-600">Jouw doel is om binnen 10 gespreksbeurten de kern van het probleem en de hulpvraag van de cliënt helder te krijgen. Pas de geleerde technieken toe om het gesprek te verdiepen. Er is geen live feedback; aan het einde volgt een volledige rapportage.</p>
-                            </div>
+                             {state.isConcludingPhase ? (
+                                <div className="space-y-4 animate-fade-in">
+                                    <h2 className="font-semibold text-warm-gray-700">Rond het gesprek af</h2>
+                                    <p className="text-warm-gray-600">
+                                        Het gesprek is ten einde. Formuleer nu een laatste, samenvattende reactie waarin je de verhelderde hulpvraag benoemt en checkt bij de cliënt. Dit is de laatste stap voordat je het volledige rapport ontvangt.
+                                    </p>
+                                    <div className="bg-primary-green-light border-l-4 border-primary-green p-4 rounded-r-lg">
+                                        <h3 className="text-md font-semibold text-primary-green-dark mb-1">Waar let de AI op?</h3>
+                                        <p className="text-sm text-warm-gray-700">De AI zal in het eindrapport specifiek beoordelen of jouw samenvatting de kern van het probleem en de (vermoedelijke) hulpvraag correct en volledig omvat.</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <h2 className="font-semibold text-warm-gray-700">Jouw Opdracht</h2>
+                                    <p className="text-warm-gray-600">Jouw doel is om binnen 10 gespreksbeurten de kern van het probleem en de hulpvraag van de cliënt helder te krijgen. Pas de geleerde technieken toe om het gesprek te verdiepen.</p>
+                                    <div className="pt-4">
+                                        <button
+                                            onClick={() => dispatch({ type: 'START_CONCLUDING_PHASE' })}
+                                            className="w-full p-3 bg-accent-lime text-warm-gray-900 font-bold rounded-xl hover:bg-accent-yellow-green transition-transform transform hover:scale-105"
+                                        >
+                                            Hulpvraag is helder, start afronding
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </DynamicCoachingPanel>
                     </div>
                 </ModuleContainer>
@@ -411,30 +455,52 @@ const App: React.FC = () => {
                     contentMaxWidth="max-w-6xl"
                     onBack={() => dispatch({ type: 'NAVIGATE', payload: 'onderdeel3' })}
                  >
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                        <div className="w-full flex justify-center lg:justify-end">
-                             <PhoneFrame>
-                                <ChatScreen 
-                                    messages={state.messages}
-                                    isLoading={false}
-                                    clientName={state.clientName}
-                                    onSendMessage={() => {}} 
-                                    isReadOnly={true} 
-                                />
-                            </PhoneFrame>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl border shadow-sm prose max-w-none">
+                    <div className="space-y-8">
+                        <div className="bg-white p-6 sm:p-8 rounded-2xl border shadow-lg max-w-none">
                             {state.isLoading ? (
                                 <div className="flex justify-center items-center h-48">
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-green"></div>
                                     <p className="ml-4 text-warm-gray-600">Rapport wordt gegenereerd...</p>
                                 </div>
                             ) : (
-                                <div dangerouslySetInnerHTML={{ __html: finalReport || '' }} />
+                                <div className="report-content" dangerouslySetInnerHTML={{ __html: finalReport || '' }} />
                             )}
+                        </div>
+                        
+                        <Accordion title="Bekijk het volledige gesprek" isOpen={isChatHistoryOpen} onToggle={() => setIsChatHistoryOpen(!isChatHistoryOpen)}>
+                            <div className="mt-4">
+                                <PhoneFrame>
+                                    <ChatScreen 
+                                        messages={state.messages}
+                                        isLoading={false}
+                                        clientName={state.clientName}
+                                        onSendMessage={() => {}} 
+                                        isReadOnly={true} 
+                                    />
+                                </PhoneFrame>
+                            </div>
+                        </Accordion>
+            
+                        <div className="text-center pt-4">
+                            <button
+                              onClick={() => dispatch({ type: 'NAVIGATE', payload: 'onderdeel3' })}
+                              className="w-full max-w-xs mx-auto p-4 bg-primary-green text-white font-bold rounded-xl hover:bg-primary-green-dark transition-transform transform hover:scale-105"
+                            >
+                              Afronden
+                            </button>
                         </div>
                     </div>
                 </ModuleContainer>
+            );
+        case 'test_report':
+            return (
+                 <ModuleContainer
+                    title="Rapportage"
+                    description="Hieronder volgt de analyse van jouw toets."
+                    contentMaxWidth="max-w-6xl"
+                >
+                    <TestReportScreen />
+                 </ModuleContainer>
             );
         case 'training_ended':
             return <EndScreen />;

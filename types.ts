@@ -27,7 +27,8 @@ export type View =
   | 'training_ended'
   | 'hulpvraag_chat'
   | 'hulpvraag_report'
-  | 'about';
+  | 'about'
+  | 'test_report';
 
 
 export interface Progress {
@@ -76,6 +77,14 @@ export interface LSDTrainingStep {
     skill: 'L' | 'S' | 'D' | 'independent' | 'test';
     title: string;
     description: string;
+}
+
+export interface StructuredReportData {
+  title: string;
+  results: TestResultDetail[];
+  score: number;
+  total: number;
+  sourceView: 'onderdeel1' | 'onderdeel2';
 }
 
 export interface Report {

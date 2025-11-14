@@ -1,33 +1,43 @@
 
-
 import React, { useState, useEffect } from 'react';
 import type { Report, TestResultDetail, SkillAssessmentLevel, View } from '../types';
 import { getReports } from '../services/reportService';
-import { TRAINING_PROGRAM, LSD_TRAINING_PROGRAM, TEST_RUBRIC } from '../constants';
+import { TRAINING_PROGRAM, LSD_TRAINING_PROGRAM, TEST_RUBRIC, MINI_CASE_RUBRIC } from '../constants';
 import { EyeIcon, LightBulbIcon, CheckCircleIcon } from './IconComponents';
 import { useAppContext } from '../AppContext';
-
-const assessmentDisplayStyles: { [key in SkillAssessmentLevel]: string } = {
-    "Goed": "bg-primary-green text-white",
-    "Voldoende": "bg-amber-300 text-amber-900",
-    "Onvoldoende": "bg-red-200 text-red-800"
-};
+import { ReportDetailItem } from './ReportComponents';
 
 const ReportModal: React.FC<{ report: Report; onClose: () => void }> = ({ report, onClose }) => {
     const isTestReport = Array.isArray(report.data);
     const isMarkdownReport = typeof report.data === 'string';
 
-    const getRubricLevel = (score: number) => {
-        for (const level in TEST_RUBRIC) {
-            const { scoreRange } = TEST_RUBRIC[level];
-            if (score >= scoreRange[0] && score <= scoreRange[1]) {
-                return TEST_RUBRIC[level];
+    const getRubricContent = (score: number, total: number) => {
+        if (report.moduleKey === 'onderdeel1_eindtoets') {
+            for (const level in TEST_RUBRIC) {
+                const { scoreRange } = TEST_RUBRIC[level];
+                if (score >= scoreRange[0] && score <= scoreRange[1]) {
+                    return TEST_RUBRIC[level];
+                }
+            }
+            return TEST_RUBRIC.onvoldoende;
+        } else { // Onderdeel 2
+             if (report.moduleKey === 'onderdeel2_eindtoets') {
+                const passMark = 0.66;
+                if (total > 0 && score / total >= passMark) return { ...MINI_CASE_RUBRIC.voldoende, description: `Je hebt ${score} van de ${total} reacties correct en daarmee de toets behaald.` };
+                return { ...MINI_CASE_RUBRIC.onvoldoende, description: `Je hebt ${score} van de ${total} reacties correct. Minimaal ${Math.ceil(total * passMark)} is nodig om te slagen.` };
+            } else { // Zelfstandige Oefening
+                const passMark = 0.75;
+                if (total === 0) return { ...MINI_CASE_RUBRIC.onvoldoende, description: "Geen antwoorden om te beoordelen." };
+                if (score / total >= passMark) return { ...MINI_CASE_RUBRIC.voldoende, description: `Je hebt ${score} van de ${total} stappen correct doorlopen.` };
+                const needed = Math.ceil(passMark * total);
+                return { ...MINI_CASE_RUBRIC.onvoldoende, description: `Je hebt ${score} van de ${total} stappen correct. Minimaal ${needed} is nodig.` };
             }
         }
-        return TEST_RUBRIC.onvoldoende;
     };
     
-    const rubricLevel = report.score !== undefined ? getRubricLevel(report.score) : null;
+    const rubricContent = (isTestReport && report.score !== undefined && report.total !== undefined) 
+        ? getRubricContent(report.score, report.total) 
+        : null;
 
     return (
         <div 
@@ -35,43 +45,39 @@ const ReportModal: React.FC<{ report: Report; onClose: () => void }> = ({ report
             onClick={onClose}
         >
             <div 
-                className="bg-white rounded-2xl shadow-xl w-full max-w-2xl transform transition-all animate-slide-in-up"
+                className="bg-white rounded-2xl shadow-xl w-full max-w-3xl transform transition-all animate-slide-in-up flex flex-col"
                 onClick={(e) => e.stopPropagation()}
             >
-                <div className="p-6 border-b border-warm-gray-200">
+                <div className="p-6 border-b border-warm-gray-200 flex-shrink-0">
                     <h2 className="text-2xl font-bold text-warm-gray-800">{report.title}</h2>
                     <p className="text-sm text-warm-gray-500 mt-1">Rapport van {report.date}</p>
                 </div>
                 
-                <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                    {isTestReport && (report.data as TestResultDetail[]).map((result, index) => (
-                        <div key={index} className="bg-warm-gray-50 p-4 rounded-xl border border-warm-gray-200 space-y-3">
-                            <div className="flex justify-between items-center">
-                                <h4 className="font-semibold text-warm-gray-800">{result.skill}</h4>
-                                <span className={`px-3 py-1 text-sm font-bold rounded-full ${assessmentDisplayStyles[result.assessment]}`}>
-                                    {result.assessment}
-                                </span>
-                            </div>
-                            <div className="mt-4 space-y-3 text-sm">
-                                <p><strong>Uitspraak cliënt:</strong> <em className="text-warm-gray-600">"{result.clientStatement}"</em></p>
-                                <p><strong>Jouw reactie:</strong> <em className="text-warm-gray-600">"{result.studentResponse}"</em></p>
-                                <div className="bg-white p-3 rounded-md border-l-4 border-amber-400">
-                                    <p className="font-semibold text-amber-800">Onderbouwing:</p>
-                                    <p className="text-warm-gray-700">{result.justification}</p>
-                                </div>
-                                <div className="bg-white p-3 rounded-md border-l-4 border-primary-green">
-                                    <p className="font-semibold text-primary-green-dark">Feedback Tip:</p>
-                                    <p className="text-warm-gray-700">{result.feedback}</p>
-                                </div>
+                <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+                    {rubricContent && (
+                         <div className={`p-6 rounded-xl border-l-4 ${rubricContent.color}`}>
+                            <h2 className="text-2xl font-bold">{rubricContent.title} ({report.score}/{report.total})</h2>
+                            <p className="mt-2">{rubricContent.description}</p>
+                        </div>
+                    )}
+                    
+                    {isTestReport && (
+                        <div>
+                            <h3 className="text-xl font-semibold text-warm-gray-700 border-b pb-2 mb-4">Details per vaardigheid</h3>
+                            <div className="space-y-4">
+                                {(report.data as TestResultDetail[]).map((result, index) => (
+                                    <ReportDetailItem key={index} result={result} />
+                                ))}
                             </div>
                         </div>
-                    ))}
+                    )}
+
                     {isMarkdownReport && (
-                        <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: report.data as string }} />
+                        <div className="report-content" dangerouslySetInnerHTML={{ __html: report.data as string }} />
                     )}
                 </div>
 
-                <div className="p-4 bg-warm-gray-100 rounded-b-2xl flex justify-end">
+                <div className="p-4 bg-warm-gray-100 rounded-b-2xl flex justify-end flex-shrink-0">
                     <button
                         onClick={onClose}
                         className="px-6 py-2 bg-warm-gray-200 text-warm-gray-700 font-bold rounded-xl hover:bg-warm-gray-300 transition-colors"

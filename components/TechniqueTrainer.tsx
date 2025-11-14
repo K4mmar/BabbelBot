@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TRAINING_PROGRAM, SKILL_INSTRUCTIONS, TEST_RUBRIC } from '../constants';
 import { getChallengeBatch, getTechniqueFeedback, getBulkTechniqueFeedback, getCoachingTip, getAIResponseForTest, getPersonalizedTestSequence, getInitialMessage } from '../services/geminiService';
@@ -24,7 +20,7 @@ import { useAppContext } from '../AppContext';
 
 const TEST_SKILL_SEQUENCE = ['Open vragen stellen', 'Parafraseren', 'Gevoelsreflectie', 'Samenvatten'];
 
-type TrainerStep = 'practice' | 'test_report' | 'level_complete';
+type TrainerStep = 'practice' | 'level_complete';
 
 const assessmentStyles: { [key in SkillAssessmentLevel]: { container: string; text: string; icon: string } } = {
     "Goed": { container: 'bg-primary-green-light border-primary-green', text: 'text-primary-green-dark', icon: 'text-primary-green' },
@@ -59,82 +55,6 @@ const Accordion: React.FC<{
 );
 
 
-const TestReport: React.FC<{
-    results: TestResultDetail[];
-    score: number;
-    total: number;
-    onComplete: (passed: boolean) => void;
-    onRestart: () => void;
-}> = ({ results, score, total, onComplete, onRestart }) => {
-    const getRubricLevel = (score: number) => {
-        for (const level in TEST_RUBRIC) {
-            const { scoreRange } = TEST_RUBRIC[level];
-            if (score >= scoreRange[0] && score <= scoreRange[1]) {
-                return TEST_RUBRIC[level];
-            }
-        }
-        return TEST_RUBRIC.onvoldoende;
-    };
-
-    const rubricLevel = getRubricLevel(score);
-    const passed = score >= 3;
-
-    const assessmentDisplayStyles: { [key in SkillAssessmentLevel]: string } = {
-        "Goed": "bg-primary-green text-white",
-        "Voldoende": "bg-amber-300 text-amber-900",
-        "Onvoldoende": "bg-red-200 text-red-800"
-    };
-
-    return (
-        <div className="w-full max-w-3xl mx-auto space-y-6 animate-fade-in">
-            <div className="text-center">
-                <ClipboardCheckIcon className="w-20 h-20 text-primary-green mx-auto"/>
-                <h1 className="text-3xl font-bold text-warm-gray-800 mt-4">Eindtoets Rapport</h1>
-                <p className="text-warm-gray-600">Hier is een overzicht van je prestaties.</p>
-            </div>
-            
-            <div className={`p-6 rounded-xl border-l-4 ${rubricLevel.color}`}>
-                <h2 className="text-2xl font-bold">{rubricLevel.title} ({score}/{total})</h2>
-                <p className="mt-2">{rubricLevel.description}</p>
-            </div>
-
-            <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
-                <h3 className="text-xl font-semibold text-warm-gray-700 border-b pb-2">Details per vaardigheid</h3>
-                {results.map((result, index) => (
-                    <div key={index} className="bg-warm-gray-50 p-4 rounded-xl border space-y-3">
-                        <div className="flex justify-between items-center">
-                            <h4 className="font-semibold text-warm-gray-800">{result.skill}</h4>
-                            <span className={`px-3 py-1 text-sm font-bold rounded-full ${assessmentDisplayStyles[result.assessment]}`}>
-                                {result.assessment}
-                            </span>
-                        </div>
-                        <div className="mt-4 space-y-3 text-sm">
-                            <p><strong>Uitspraak cliënt:</strong> <em className="text-warm-gray-600">"{result.clientStatement}"</em></p>
-                            <p><strong>Jouw reactie:</strong> <em className="text-warm-gray-600">"{result.studentResponse}"</em></p>
-                             <div className="bg-white p-3 rounded-md border-l-4 border-amber-400">
-                                <p className="font-semibold text-amber-800">Onderbouwing:</p>
-                                <p className="text-warm-gray-700">{result.justification}</p>
-                            </div>
-                            <div className="bg-white p-3 rounded-md border-l-4 border-primary-green">
-                                <p className="font-semibold text-primary-green-dark">Feedback Tip:</p>
-                                <p className="text-warm-gray-700">{result.feedback}</p>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <button
-                onClick={() => passed ? onComplete(true) : onRestart()}
-                className="w-full mt-4 p-4 bg-primary-green text-white font-bold rounded-xl hover:bg-primary-green-dark transition-transform transform hover:scale-105"
-            >
-                {passed ? 'Voltooi en ga verder' : 'Probeer opnieuw'}
-            </button>
-        </div>
-    );
-};
-
-
 export const TechniqueTrainer: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { userRole, userName, clientName, userKey, activeTechniqueLevel: initialStartLevel } = state;
@@ -161,7 +81,6 @@ export const TechniqueTrainer: React.FC = () => {
     const [isTestInstructions, setIsTestInstructions] = useState(false);
     const [testConversation, setTestConversation] = useState<Message[]>([]);
     const [currentTestSkillIndex, setCurrentTestSkillIndex] = useState(0);
-    const [testResults, setTestResults] = useState<TestResultDetail[]>([]);
     const [testAnswers, setTestAnswers] = useState<{ skill: string; clientStatement: string; studentResponse: string; }[]>([]);
     const [personalizedTestSequence, setPersonalizedTestSequence] = useState<string[]>(TEST_SKILL_SEQUENCE);
 
@@ -212,7 +131,6 @@ export const TechniqueTrainer: React.FC = () => {
             setCurrentStep('practice');
             setIsTestInstructions(true);
             setTestAnswers([]);
-            setTestResults([]);
             setPersonalizedTestSequence(TEST_SKILL_SEQUENCE);
         } else {
             setCurrentStep('practice');
@@ -343,19 +261,33 @@ export const TechniqueTrainer: React.FC = () => {
                 const results = await getBulkTechniqueFeedback(updatedAnswers);
                 const correctCount = results.filter(r => r.assessment === 'Voldoende' || r.assessment === 'Goed').length;
                 
+                const reportTitle = 'Eindtoets Basistechnieken';
                 saveReport(
                     userKey,
                     'onderdeel1_eindtoets',
-                    'Eindtoets Basistechnieken',
+                    reportTitle,
                     results,
                     correctCount,
                     personalizedTestSequence.length
                 );
+                
+                const currentLevelIndex = TRAINING_PROGRAM.findIndex(l => l.skill === selectedLevel.skill);
+                if (programProgress <= currentLevelIndex) {
+                    saveProgress(currentLevelIndex + 1);
+                }
+                
+                dispatch({
+                    type: 'SET_STRUCTURED_REPORT',
+                    payload: {
+                        title: reportTitle,
+                        results,
+                        score: correctCount,
+                        total: personalizedTestSequence.length,
+                        sourceView: 'onderdeel1'
+                    }
+                });
+                return;
 
-                setTestResults(results);
-                setSuccessfulAttempts(correctCount);
-                setIsLoading(false);
-                setCurrentStep('test_report');
             } else {
                 const nextSkill = personalizedTestSequence[nextSkillIndex];
                 
@@ -392,14 +324,6 @@ export const TechniqueTrainer: React.FC = () => {
                 setSuccessfulAttempts(newCount);
             }
             setIsLoading(false);
-        }
-    };
-    
-    const handleReportCompletion = (passed: boolean) => {
-        if(passed) {
-            setCurrentStep('level_complete');
-        } else {
-            if(selectedLevel) startLevel(selectedLevel);
         }
     };
     
@@ -683,8 +607,6 @@ export const TechniqueTrainer: React.FC = () => {
         case 'practice':
         case 'level_complete':
             return renderPractice();
-        case 'test_report':
-            return <TestReport results={testResults} score={successfulAttempts} total={personalizedTestSequence.length} onComplete={handleReportCompletion} onRestart={() => selectedLevel && startLevel(selectedLevel)} />;
         default:
             return null;
     }

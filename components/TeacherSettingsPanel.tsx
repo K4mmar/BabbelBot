@@ -1,10 +1,22 @@
 
+
 import React, { useState, useCallback } from 'react';
-import { CONVERSATIONAL_SKILLS } from '../constants';
 import { getFrameworks, saveFrameworks } from '../services/reportService';
 import { useAppContext } from '../AppContext';
 
-const TEACHER_CONFIGURABLE_SKILLS = [...CONVERSATIONAL_SKILLS, "Hulpvraag Verhelderen"];
+const TEACHER_CONFIGURABLE_SKILLS = [
+    // Onderdeel 1
+    "Open vragen stellen",
+    "Parafraseren",
+    "Gevoelsreflectie",
+    "Samenvatten",
+    // Onderdeel 2 (LSD)
+    "Luister-signaal",
+    "Doorvragen",
+    "Actief luisteren", // Meta-skill gebruikt in eindtoetsen
+    // Onderdeel 3
+    "Hulpvraag Verhelderen",
+];
 
 export const TeacherSettingsPanel: React.FC = () => {
   const { dispatch } = useAppContext();
@@ -79,7 +91,7 @@ export const FEEDBACK_FRAMEWORKS: Record<string, string> = ${JSON.stringify(allF
             value={allFrameworks[selectedSkill] || ''}
             onChange={handleFrameworkTextChange}
             placeholder={`Beschrijf hier hoe de AI de toepassing van de vaardigheid moet beoordelen...`}
-            className="w-full p-3 rounded-xl border border-warm-gray-300 focus:outline-none focus:ring-2 focus:ring-accent-lime transition"
+            className="w-full p-3 rounded-xl border border-warm-gray-700 bg-warm-gray-800 text-white placeholder-warm-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-lime transition"
           />
           <p className="text-xs text-warm-gray-500 mt-1">
             Deze instructie stuurt de feedback die studenten ontvangen. Wees zo specifiek mogelijk.

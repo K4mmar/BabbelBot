@@ -20,7 +20,7 @@ import { AboutScreen } from './components/AboutScreen';
 import { SKILL_INSTRUCTIONS } from './constants';
 import { MobileWarning } from './components/MobileWarning';
 import { useAppContext } from './AppContext';
-import { TestReportScreen } from './components/TestReportScreen';
+import { ReportScreen } from './components/ReportScreen';
 
 // Simple unique ID generator
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
@@ -492,14 +492,14 @@ const App: React.FC = () => {
                     </div>
                 </ModuleContainer>
             );
-        case 'test_report':
+        case 'report':
             return (
                  <ModuleContainer
                     title="Rapportage"
                     description="Hieronder volgt de analyse van jouw toets."
                     contentMaxWidth="max-w-6xl"
                 >
-                    <TestReportScreen />
+                    <ReportScreen />
                  </ModuleContainer>
             );
         case 'training_ended':

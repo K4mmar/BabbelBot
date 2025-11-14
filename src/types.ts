@@ -28,7 +28,7 @@ export type View =
   | 'hulpvraag_chat'
   | 'hulpvraag_report'
   | 'about'
-  | 'test_report';
+  | 'report';
 
 
 export interface Progress {

@@ -146,7 +146,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'SET_FINAL_REPORT':
         return { ...state, finalReport: action.payload, currentView: 'hulpvraag_report' };
     case 'SET_STRUCTURED_REPORT':
-        return { ...state, structuredReportData: action.payload, currentView: 'test_report' };
+        return { ...state, structuredReportData: action.payload, currentView: 'report' };
     case 'START_CONCLUDING_PHASE':
         return { ...state, isConcludingPhase: true };
     default:

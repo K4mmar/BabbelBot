@@ -4,7 +4,7 @@ import { ChatScreen } from './components/ChatScreen';
 import { InstructionsPanel } from './components/InstructionsPanel';
 import { DynamicCoachingPanel } from './components/DynamicCoachingPanel';
 import { EndScreen } from './components/EndScreen';
-import { TechniqueTrainer } from './components/techniqueTrainer';
+import { TechniqueTrainer } from './components/TechniqueTrainer';
 import { TeacherSettingsPanel } from './components/TeacherSettingsPanel';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { MiniCaseScreen } from './components/MiniCaseScreen';

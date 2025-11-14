@@ -6,7 +6,7 @@ import { DynamicCoachingPanel } from './components/DynamicCoachingPanel';
 import { EndScreen } from './components/EndScreen';
 import { TechniqueDrill } from './components/TechniqueDrill';
 import { TeacherSettingsPanel } from './components/TeacherSettingsPanel';
-import { WelcomeScreen } from './components/WelcomeScreen';
+import { LoginScreen } from './components/LoginScreen';
 import { MiniCaseScreen } from './components/MiniCaseScreen';
 import { getAIResponseStream, getInitialMessageStream, getConcludingMessageStream, getTechniqueFeedback, getHulpvraagFeedback } from './services/geminiService';
 import { saveReport } from './services/reportService';
@@ -306,7 +306,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
         case 'welcome':
-            return <div className="flex-grow flex items-center justify-center p-4"><WelcomeScreen onStart={handleWelcomeStart} onLogin={(name, role) => dispatch({ type: 'LOGIN', payload: { name, role } })} /></div>;
+            return <div className="flex-grow flex items-center justify-center p-4"><LoginScreen onStart={handleWelcomeStart} onLogin={(name, role) => dispatch({ type: 'LOGIN', payload: { name, role } })} /></div>;
         case 'dashboard':
             return <Dashboard />;
         case 'onderdeel1':
@@ -510,7 +510,7 @@ const App: React.FC = () => {
                 dispatch({ type: 'NAVIGATE', payload: currentView === 'training_technique' ? 'onderdeel1' : 'onderdeel2' });
                 return null;
             }
-            return <div className="flex-grow flex items-center justify-center p-4"><WelcomeScreen onStart={handleWelcomeStart} onLogin={(name, role) => dispatch({ type: 'LOGIN', payload: { name, role } })} /></div>;
+            return <div className="flex-grow flex items-center justify-center p-4"><LoginScreen onStart={handleWelcomeStart} onLogin={(name, role) => dispatch({ type: 'LOGIN', payload: { name, role } })} /></div>;
     }
   }
 

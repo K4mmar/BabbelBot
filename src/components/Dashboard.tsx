@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Report, TestResultDetail, SkillAssessmentLevel, View } from '../types';
-import { getReports } from '../services/reportService';
+import { getReports } from '../services/storageService';
 import { TRAINING_PROGRAM, LSD_TRAINING_PROGRAM, TEST_RUBRIC, MINI_CASE_RUBRIC } from '../constants';
 import { EyeIcon, LightBulbIcon, CheckCircleIcon } from './IconComponents';
 import { useAppContext } from '../AppContext';

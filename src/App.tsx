@@ -9,7 +9,7 @@ import { TeacherSettingsPanel } from './components/TeacherSettingsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { MiniCaseScreen } from './components/MiniCaseScreen';
 import { getAIResponseStream, getInitialMessageStream, getConcludingMessageStream, getTechniqueFeedback, getHulpvraagFeedback } from './services/geminiService';
-import { saveReport } from './services/reportService';
+import { saveReport } from './services/storageService';
 import type { Message, Settings, TrainingLevel, View, LSDTrainingStep, TechniqueFeedback, SkillAssessmentLevel } from './types';
 import { TechniqueTrainerOverview, LSDMethodOverview, FullConversationStarter } from './components/TrainingOverviews';
 import { PhoneFrame } from './components/PhoneFrame';

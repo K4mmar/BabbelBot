@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
-import { getFrameworks, getReports } from './reportService';
+import { getFrameworks, getReports } from './storageService';
 
 // FIX: Per coding guidelines, API key must be obtained from process.env.API_KEY.
 // This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TRAINING_PROGRAM, SKILL_INSTRUCTIONS, TEST_RUBRIC } from '../constants';
 import { getChallengeBatch, getTechniqueFeedback, getBulkTechniqueFeedback, getCoachingTip, getAIResponseForTest, getPersonalizedTestSequence, getInitialMessage } from '../services/geminiService';
-import { saveReport } from '../services/reportService';
+import { saveReport } from '../services/storageService';
 import type { TechniqueFeedback, TrainingLevel, TestResultDetail, SkillAssessmentLevel, Settings, Message } from '../types';
 import { 
     LockClosedIcon, 

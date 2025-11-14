@@ -3,7 +3,7 @@ import { PhoneFrame } from './PhoneFrame';
 import { ChatScreen } from './ChatScreen';
 import { CoachingPanel } from './CoachingPanel';
 import { getDynamicClientResponse, getBulkMiniCaseFeedback, getChallengeBatch, getLSDComponentFeedback, getCoachingTip, getAIResponseForLSDTest, getInitialMessage } from '../services/geminiService';
-import { saveReport } from '../services/reportService';
+import { saveReport } from '../services/storageService';
 import type { Message, TechniqueFeedback, TestResultDetail, SkillAssessmentLevel, MiniCaseTestAnswer, LSDTrainingStep, Settings } from '../types';
 import { MINI_CASE_SCENARIOS, MINI_CASE_RUBRIC, LSD_TRAINING_PROGRAM } from '../constants';
 import { LightBulbIcon, ClipboardCheckIcon, AcademicCapIcon, LockClosedIcon, LockOpenIcon } from './IconComponents';

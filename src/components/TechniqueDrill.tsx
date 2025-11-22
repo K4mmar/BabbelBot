@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TRAINING_PROGRAM, SKILL_INSTRUCTIONS, TEST_RUBRIC } from '../constants';
 import { getChallengeBatch, getTechniqueFeedback, getBulkTechniqueFeedback, getCoachingTip, getAIResponseForTest, getPersonalizedTestSequence, getInitialMessage } from '../services/geminiService';
@@ -161,15 +162,19 @@ export const TechniqueDrill: React.FC = () => {
             };
             setTestConversation([initialMessage]);
             setCurrentTestSkillIndex(0);
-        } catch (error) {
-            console.error("Error starting final test conversation:", error);
-            setPersonalizedTestSequence(TEST_SKILL_SEQUENCE);
-            setSelectedLevel(null);
-            setCurrentStep(null);
+        } catch (error: any) {
+            if (error.message === 'SYSTEM_BUSY') {
+                dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+            } else {
+                console.error("Error starting final test conversation:", error);
+                setPersonalizedTestSequence(TEST_SKILL_SEQUENCE);
+                setSelectedLevel(null);
+                setCurrentStep(null);
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [userKey, clientName]);
+    }, [userKey, clientName, dispatch]);
 
     useEffect(() => {
         if (initialStartLevel) {
@@ -200,23 +205,34 @@ export const TechniqueDrill: React.FC = () => {
                 text: batch[0],
                 timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
             }]);
-        } catch(error) {
-            console.error("Error starting practice:", error);
-            setSelectedLevel(null);
-            setCurrentStep(null);
+        } catch(error: any) {
+            if (error.message === 'SYSTEM_BUSY') {
+                dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+            } else {
+                console.error("Error starting practice:", error);
+                setSelectedLevel(null);
+                setCurrentStep(null);
+            }
         } finally {
             setIsLoading(false);
         }
-    }, [selectedLevel]);
+    }, [selectedLevel, dispatch]);
 
     const handleCoachRequest = async () => {
         if (!selectedLevel || !challenge) return;
         setIsLoading(true);
         setCoachUsed(true);
-        const skillToCoach = selectedLevel.skill;
-        const tip = await getCoachingTip(skillToCoach, challenge);
-        setCoachAdvice(tip);
-        setIsLoading(false);
+        try {
+            const skillToCoach = selectedLevel.skill;
+            const tip = await getCoachingTip(skillToCoach, challenge);
+            setCoachAdvice(tip);
+        } catch (error: any) {
+            if (error.message === 'SYSTEM_BUSY') {
+                dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,52 +274,63 @@ export const TechniqueDrill: React.FC = () => {
             const nextSkillIndex = currentTestSkillIndex + 1;
 
             if (nextSkillIndex >= personalizedTestSequence.length) {
-                const results = await getBulkTechniqueFeedback(updatedAnswers);
-                const correctCount = results.filter(r => r.assessment === 'Voldoende' || r.assessment === 'Goed').length;
-                
-                const reportTitle = 'Eindtoets Basistechnieken';
-                saveReport(
-                    userKey,
-                    'onderdeel1_eindtoets',
-                    reportTitle,
-                    results,
-                    correctCount,
-                    personalizedTestSequence.length
-                );
-                
-                const currentLevelIndex = TRAINING_PROGRAM.findIndex(l => l.skill === selectedLevel.skill);
-                if (programProgress <= currentLevelIndex) {
-                    saveProgress(currentLevelIndex + 1);
-                }
-                
-                dispatch({
-                    type: 'SET_STRUCTURED_REPORT',
-                    payload: {
-                        title: reportTitle,
+                try {
+                    const results = await getBulkTechniqueFeedback(updatedAnswers);
+                    const correctCount = results.filter(r => r.assessment === 'Voldoende' || r.assessment === 'Goed').length;
+                    
+                    const reportTitle = 'Eindtoets Basistechnieken';
+                    saveReport(
+                        userKey,
+                        'onderdeel1_eindtoets',
+                        reportTitle,
                         results,
-                        score: correctCount,
-                        total: personalizedTestSequence.length,
-                        sourceView: 'onderdeel1'
+                        correctCount,
+                        personalizedTestSequence.length
+                    );
+                    
+                    const currentLevelIndex = TRAINING_PROGRAM.findIndex(l => l.skill === selectedLevel.skill);
+                    if (programProgress <= currentLevelIndex) {
+                        saveProgress(currentLevelIndex + 1);
                     }
-                });
+                    
+                    dispatch({
+                        type: 'SET_STRUCTURED_REPORT',
+                        payload: {
+                            title: reportTitle,
+                            results,
+                            score: correctCount,
+                            total: personalizedTestSequence.length,
+                            sourceView: 'onderdeel1'
+                        }
+                    });
+                } catch (error: any) {
+                    if (error.message === 'SYSTEM_BUSY') {
+                        dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+                    }
+                }
                 return;
 
             } else {
-                const nextSkill = personalizedTestSequence[nextSkillIndex];
-                
-                const aiResponse = await getAIResponseForTest(updatedConversation, nextSkill);
+                try {
+                    const nextSkill = personalizedTestSequence[nextSkillIndex];
+                    const aiResponse = await getAIResponseForTest(updatedConversation, nextSkill);
 
-                const aiMessage: Message = {
-                    id: Date.now().toString() + 'ai',
-                    sender: 'client',
-                    text: aiResponse.responseText,
-                    nonVerbalCue: aiResponse.nonVerbalCue,
-                    timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-                };
-                setTestConversation(prev => [...prev, aiMessage]);
-                
-                setCurrentTestSkillIndex(nextSkillIndex);
-                setIsLoading(false);
+                    const aiMessage: Message = {
+                        id: Date.now().toString() + 'ai',
+                        sender: 'client',
+                        text: aiResponse.responseText,
+                        nonVerbalCue: aiResponse.nonVerbalCue,
+                        timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+                    };
+                    setTestConversation(prev => [...prev, aiMessage]);
+                    setCurrentTestSkillIndex(nextSkillIndex);
+                } catch (error: any) {
+                    if (error.message === 'SYSTEM_BUSY') {
+                        dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+                    }
+                } finally {
+                    setIsLoading(false);
+                }
             }
         } else {
             const userMessage = { 
@@ -314,16 +341,23 @@ export const TechniqueDrill: React.FC = () => {
             };
             setMessages(prev => [...prev, userMessage]);
             setIsLoading(true);
-            const feedbackResult = await getTechniqueFeedback(selectedLevel.skill, challenge, inputText);
-            setInputText('');
-            setFeedback(feedbackResult);
-            const isCorrect = feedbackResult.assessment === 'Voldoende' || feedbackResult.assessment === 'Goed';
-            
-            if (isCorrect && !coachUsed) {
-                const newCount = successfulAttempts + 1;
-                setSuccessfulAttempts(newCount);
+            try {
+                const feedbackResult = await getTechniqueFeedback(selectedLevel.skill, challenge, inputText);
+                setInputText('');
+                setFeedback(feedbackResult);
+                const isCorrect = feedbackResult.assessment === 'Voldoende' || feedbackResult.assessment === 'Goed';
+                
+                if (isCorrect && !coachUsed) {
+                    const newCount = successfulAttempts + 1;
+                    setSuccessfulAttempts(newCount);
+                }
+            } catch (error: any) {
+                if (error.message === 'SYSTEM_BUSY') {
+                    dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+                }
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         }
     };
     

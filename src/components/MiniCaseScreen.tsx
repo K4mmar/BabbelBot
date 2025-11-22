@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { PhoneFrame } from './PhoneFrame';
 import { ChatScreen } from './ChatScreen';
@@ -120,17 +121,24 @@ export const MiniCaseScreen: React.FC = () => {
     setIsLoading(true);
     setMessages([]);
     setTestAnswers([]);
-    const testSettings: Settings = {
-        field: "Algemeen Maatschappelijk Werk",
-        case: "Een cliënt die zich zorgen maakt over de toekomst.",
-        skill: "Actief luisteren",
-        learningGoal: "Een verkennend gesprek voeren."
-    };
-    const initialText = await getInitialMessage(testSettings);
-    addMessage('client', initialText, "Kijkt wat onzeker om zich heen.");
-    setIsLoading(false);
-    setPhase('action');
-  }, [addMessage]);
+    try {
+        const testSettings: Settings = {
+            field: "Algemeen Maatschappelijk Werk",
+            case: "Een cliënt die zich zorgen maakt over de toekomst.",
+            skill: "Actief luisteren",
+            learningGoal: "Een verkennend gesprek voeren."
+        };
+        const initialText = await getInitialMessage(testSettings);
+        addMessage('client', initialText, "Kijkt wat onzeker om zich heen.");
+        setPhase('action');
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        }
+    } finally {
+        setIsLoading(false);
+    }
+  }, [addMessage, dispatch]);
   
   const handleStartPractice = useCallback(async () => {
       setMessages([]);
@@ -139,21 +147,28 @@ export const MiniCaseScreen: React.FC = () => {
       
       if (mode === 'guided' && selectedGuidedLevel) {
           setIsLoading(true);
-          const skillForPrompt = selectedGuidedLevel.skill === 'S' ? "Samenvatten" : "Actief luisteren";
-          const batch = await getChallengeBatch(skillForPrompt, selectedGuidedLevel.goal + 3);
-          setChallengeBatch(batch);
-          setChallengeIndex(0);
-          if (batch.length > 0) {
-              addMessage('client', batch[0]);
+          try {
+              const skillForPrompt = selectedGuidedLevel.skill === 'S' ? "Samenvatten" : "Actief luisteren";
+              const batch = await getChallengeBatch(skillForPrompt, selectedGuidedLevel.goal + 3);
+              setChallengeBatch(batch);
+              setChallengeIndex(0);
+              if (batch.length > 0) {
+                  addMessage('client', batch[0]);
+              }
+          } catch (error: any) {
+              if (error.message === 'SYSTEM_BUSY') {
+                  dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+              }
+          } finally {
+              setIsLoading(false);
           }
-          setIsLoading(false);
       } else if (mode === 'independent') {
           const firstStep = scenario.steps[0];
           addMessage('client', firstStep.clientStatement, firstStep.nonVerbalCue);
           setCurrentStepIndex(0);
       }
       setPhase('action');
-  }, [addMessage, mode, selectedGuidedLevel, scenario]);
+  }, [addMessage, mode, selectedGuidedLevel, scenario, dispatch]);
 
   const handleSendMessage = async (response: string) => {
     addMessage('user', response);
@@ -182,43 +197,49 @@ export const MiniCaseScreen: React.FC = () => {
         }
     }
 
-    if (endConversation) {
-        const results = await getBulkMiniCaseFeedback(updatedAnswers);
-        const score = results.filter(r => r.assessment === 'Voldoende' || r.assessment === 'Goed').length;
+    try {
+        if (endConversation) {
+            const results = await getBulkMiniCaseFeedback(updatedAnswers);
+            const score = results.filter(r => r.assessment === 'Voldoende' || r.assessment === 'Goed').length;
 
-        const moduleKey = mode === 'test' ? 'onderdeel2_eindtoets' : 'onderdeel2_zelfstandig';
-        const title = mode === 'test' ? 'Eindtoets LSD-methode' : `Zelfstandige Oefening: ${scenario.title}`;
-        const total = mode === 'test' ? 6 : scenario.steps.length;
-        
-        saveReport(userKey, moduleKey, title, results, score, total);
-        
-        const levelInfo = LSD_TRAINING_PROGRAM.find(l => l.type === mode);
-        if (levelInfo && lsdProgress < levelInfo.step) {
-            saveLsdProgress(levelInfo.step);
-        }
-        
-        dispatch({
-            type: 'SET_STRUCTURED_REPORT',
-            payload: { title, results, score, total, sourceView: 'onderdeel2' }
-        });
+            const moduleKey = mode === 'test' ? 'onderdeel2_eindtoets' : 'onderdeel2_zelfstandig';
+            const title = mode === 'test' ? 'Eindtoets LSD-methode' : `Zelfstandige Oefening: ${scenario.title}`;
+            const total = mode === 'test' ? 6 : scenario.steps.length;
+            
+            saveReport(userKey, moduleKey, title, results, score, total);
+            
+            const levelInfo = LSD_TRAINING_PROGRAM.find(l => l.type === mode);
+            if (levelInfo && lsdProgress < levelInfo.step) {
+                saveLsdProgress(levelInfo.step);
+            }
+            
+            dispatch({
+                type: 'SET_STRUCTURED_REPORT',
+                payload: { title, results, score, total, sourceView: 'onderdeel2' }
+            });
 
-    } else {
-        const conversationHistory = [...messages, {id: 'temp', sender: 'user', text: response, timestamp: ''} as Message];
-        
-        let dynamicResponse: { responseText: string, nonVerbalCue: string };
-
-        if (isTestMode) {
-            dynamicResponse = await getAIResponseForLSDTest(conversationHistory);
         } else {
-             const nextStepIndex = currentStepIndex + 1;
-             dynamicResponse = await getDynamicClientResponse(conversationHistory, scenario, nextStepIndex, response);
-             setCurrentStepIndex(nextStepIndex);
-        }
+            const conversationHistory = [...messages, {id: 'temp', sender: 'user', text: response, timestamp: ''} as Message];
+            
+            let dynamicResponse: { responseText: string, nonVerbalCue: string };
 
-        addMessage('client', dynamicResponse.responseText, dynamicResponse.nonVerbalCue);
+            if (isTestMode) {
+                dynamicResponse = await getAIResponseForLSDTest(conversationHistory);
+            } else {
+                 const nextStepIndex = currentStepIndex + 1;
+                 dynamicResponse = await getDynamicClientResponse(conversationHistory, scenario, nextStepIndex, response);
+                 setCurrentStepIndex(nextStepIndex);
+            }
+
+            addMessage('client', dynamicResponse.responseText, dynamicResponse.nonVerbalCue);
+        }
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        }
+    } finally {
+        setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handleCoachRequest = async () => {
@@ -228,16 +249,23 @@ export const MiniCaseScreen: React.FC = () => {
     setIsLoading(true);
     setCoachUsed(true);
 
-    const skillMap = {
-        'L': 'Actief luisteren',
-        'S': 'Parafraseren',
-        'D': 'Open vragen stellen'
-    };
-    const skillToCoach = skillMap[selectedGuidedLevel.skill as 'L'|'S'|'D'];
+    try {
+        const skillMap = {
+            'L': 'Actief luisteren',
+            'S': 'Parafraseren',
+            'D': 'Open vragen stellen'
+        };
+        const skillToCoach = skillMap[selectedGuidedLevel.skill as 'L'|'S'|'D'];
 
-    const tip = await getCoachingTip(skillToCoach, lastClientMessage.text);
-    setCoachAdvice(tip);
-    setIsLoading(false);
+        const tip = await getCoachingTip(skillToCoach, lastClientMessage.text);
+        setCoachAdvice(tip);
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        }
+    } finally {
+        setIsLoading(false);
+    }
   };
     
   const handleGuidedSubmit = async (responseText: string) => {
@@ -249,14 +277,21 @@ export const MiniCaseScreen: React.FC = () => {
     addMessage('user', responseText);
 
     setIsLoading(true);
-    const feedbackResult = await getLSDComponentFeedback(selectedGuidedLevel.skill as 'L' | 'S' | 'D', lastClientMessage.text, responseText);
-    setGuidedFeedback(feedbackResult);
+    try {
+        const feedbackResult = await getLSDComponentFeedback(selectedGuidedLevel.skill as 'L' | 'S' | 'D', lastClientMessage.text, responseText);
+        setGuidedFeedback(feedbackResult);
 
-    const isCorrect = feedbackResult.assessment === 'Voldoende' || feedbackResult.assessment === 'Goed';
-    if (isCorrect) {
-        setGuidedAttempts(prev => prev + 1);
+        const isCorrect = feedbackResult.assessment === 'Voldoende' || feedbackResult.assessment === 'Goed';
+        if (isCorrect) {
+            setGuidedAttempts(prev => prev + 1);
+        }
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        }
+    } finally {
+        setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleNextGuidedChallenge = useCallback(async () => {

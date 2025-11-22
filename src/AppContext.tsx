@@ -1,3 +1,4 @@
+
 import React, { createContext, useReducer, useContext, ReactNode } from 'react';
 import type { View, Settings, Message, TechniqueFeedback, TrainingLevel, LSDTrainingStep, StructuredReportData } from './types';
 
@@ -22,6 +23,7 @@ export interface AppState {
   activeLSDStep: LSDTrainingStep | null;
   structuredReportData: StructuredReportData | null;
   isConcludingPhase: boolean;
+  isSystemBusy: boolean;
 }
 
 // 2. ACTIONS
@@ -44,7 +46,8 @@ export type Action =
   | { type: 'SET_TURN_COUNT'; payload: number }
   | { type: 'SET_FINAL_REPORT'; payload: string | null }
   | { type: 'SET_STRUCTURED_REPORT'; payload: StructuredReportData }
-  | { type: 'START_CONCLUDING_PHASE' };
+  | { type: 'START_CONCLUDING_PHASE' }
+  | { type: 'SET_SYSTEM_BUSY'; payload: boolean };
 
 // 3. INITIAL STATE
 const initialState: AppState = {
@@ -67,6 +70,7 @@ const initialState: AppState = {
   activeLSDStep: null,
   structuredReportData: null,
   isConcludingPhase: false,
+  isSystemBusy: false,
 };
 
 const clientNames = ["Alex", "Sam", "Chris", "Jamie", "Robin"];
@@ -149,6 +153,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, structuredReportData: action.payload, currentView: 'report' };
     case 'START_CONCLUDING_PHASE':
         return { ...state, isConcludingPhase: true };
+    case 'SET_SYSTEM_BUSY':
+        return { ...state, isSystemBusy: action.payload, isLoading: false, isCoachLoading: false };
     default:
       return state;
   }

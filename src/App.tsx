@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatScreen } from './components/ChatScreen';
@@ -8,6 +9,7 @@ import { TechniqueDrill } from './components/TechniqueDrill';
 import { TeacherSettingsPanel } from './components/TeacherSettingsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { MiniCaseScreen } from './components/MiniCaseScreen';
+import { SystemBusyModal } from './components/SystemBusyModal';
 import { getAIResponseStream, getInitialMessageStream, getConcludingMessageStream, getTechniqueFeedback, getHulpvraagFeedback } from './services/geminiService';
 import { saveReport } from './services/storageService';
 import type { Message, Settings, TrainingLevel, View, LSDTrainingStep, TechniqueFeedback, SkillAssessmentLevel } from './types';
@@ -170,9 +172,15 @@ const App: React.FC = () => {
     };
     dispatch({ type: 'ADD_MESSAGE', payload: initialMessage });
     
-    const stream = getInitialMessageStream(finalSettings);
-    for await (const chunk of stream) {
-        dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
+    try {
+        const stream = getInitialMessageStream(finalSettings);
+        for await (const chunk of stream) {
+            dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
+        }
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        }
     }
     
     dispatch({ type: 'SET_LOADING', payload: false });
@@ -188,90 +196,90 @@ const App: React.FC = () => {
         timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
     };
 
-    if (settings.skill === "Hulpvraag Verhelderen") {
-        // This is the final, concluding message. Generate report and end.
-        if (isConcludingPhase) {
+    try {
+        if (settings.skill === "Hulpvraag Verhelderen") {
+            // This is the final, concluding message. Generate report and end.
+            if (isConcludingPhase) {
+                dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+                dispatch({ type: 'SET_LOADING', payload: true });
+                const finalMessages = [...messages, userMessage];
+                const report = await getHulpvraagFeedback(finalMessages, settings);
+                saveReport(userKey, 'onderdeel3', `Gesprek: ${settings.case}`, report);
+                dispatch({ type: 'SET_FINAL_REPORT', payload: report });
+                dispatch({ type: 'SET_LOADING', payload: false });
+                return;
+            }
+
+            // This is a normal turn in the conversation.
             dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+            dispatch({ type: 'SET_USER_TYPING', payload: false });
             dispatch({ type: 'SET_LOADING', payload: true });
-            const finalMessages = [...messages, userMessage];
-            const report = await getHulpvraagFeedback(finalMessages, settings);
-            saveReport(userKey, 'onderdeel3', `Gesprek: ${settings.case}`, report);
-            dispatch({ type: 'SET_FINAL_REPORT', payload: report });
+            
+            const newTurnCount = turnCount + 1;
+            dispatch({ type: 'SET_TURN_COUNT', payload: newTurnCount });
+
+            const messagesWithUser = [...messages, userMessage];
+
+            const aiMessage: Message = {
+                id: generateId(),
+                sender: 'client',
+                text: '', // Empty placeholder for streaming
+                timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: aiMessage });
+
+            const stream = getAIResponseStream(messagesWithUser, settings);
+            for await (const chunk of stream) {
+                dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
+            }
+            
+            // After AI responds to the 10th message, start the concluding phase.
+            if (newTurnCount >= 10) {
+                dispatch({ type: 'START_CONCLUDING_PHASE' });
+            }
+            
             dispatch({ type: 'SET_LOADING', payload: false });
             return;
         }
 
-        // This is a normal turn in the conversation.
+        // --- Original training chat logic ---
         dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
         dispatch({ type: 'SET_USER_TYPING', payload: false });
         dispatch({ type: 'SET_LOADING', payload: true });
+        dispatch({ type: 'SET_COACH_LOADING', payload: true });
         
-        const newTurnCount = turnCount + 1;
-        dispatch({ type: 'SET_TURN_COUNT', payload: newTurnCount });
+        const lastClientMsg = messages.filter(m => m.sender === 'client').slice(-1)[0];
+        const feedback = await getTechniqueFeedback(settings.skill, lastClientMsg.text, text);
+        dispatch({ type: 'SET_INSTANT_FEEDBACK', payload: feedback });
+        dispatch({ type: 'SET_COACH_LOADING', payload: false });
 
-        const messagesWithUser = [...messages, userMessage];
-
-        const aiMessage: Message = {
-            id: generateId(),
-            sender: 'client',
-            text: '', // Empty placeholder for streaming
-            timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-        };
-        dispatch({ type: 'ADD_MESSAGE', payload: aiMessage });
-
-        const stream = getAIResponseStream(messagesWithUser, settings);
-        for await (const chunk of stream) {
-            dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
+        const isCorrect = feedback.assessment === 'Voldoende' || feedback.assessment === 'Goed';
+        const newProgressCount = progressCount + (isCorrect ? 1 : 0);
+        if (isCorrect) {
+            dispatch({ type: 'SET_PROGRESS', payload: newProgressCount });
         }
         
-        // After AI responds to the 10th message, start the concluding phase.
-        if (newTurnCount >= 10) {
-            dispatch({ type: 'START_CONCLUDING_PHASE' });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        if (newProgressCount >= goalTotal) {
+            const finalMessage: Message = {
+                id: generateId(),
+                sender: 'client',
+                text: '', // Empty placeholder for streaming
+                timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: finalMessage });
+
+            const stream = getConcludingMessageStream(settings);
+            for await (const chunk of stream) {
+                dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
+            }
+            
+            dispatch({ type: 'SET_LOADING', payload: false });
+            dispatch({ type: 'NAVIGATE', payload: 'training_ended' });
+            return;
         }
-        
-        dispatch({ type: 'SET_LOADING', payload: false });
-        return;
-    }
 
-    // --- Original training chat logic ---
-    dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
-    dispatch({ type: 'SET_USER_TYPING', payload: false });
-    dispatch({ type: 'SET_LOADING', payload: true });
-    dispatch({ type: 'SET_COACH_LOADING', payload: true });
-    
-    const lastClientMsg = messages.filter(m => m.sender === 'client').slice(-1)[0];
-    const feedback = await getTechniqueFeedback(settings.skill, lastClientMsg.text, text);
-    dispatch({ type: 'SET_INSTANT_FEEDBACK', payload: feedback });
-    dispatch({ type: 'SET_COACH_LOADING', payload: false });
-
-    const isCorrect = feedback.assessment === 'Voldoende' || feedback.assessment === 'Goed';
-    const newProgressCount = progressCount + (isCorrect ? 1 : 0);
-    if (isCorrect) {
-        dispatch({ type: 'SET_PROGRESS', payload: newProgressCount });
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    if (newProgressCount >= goalTotal) {
-        const finalMessage: Message = {
-            id: generateId(),
-            sender: 'client',
-            text: '', // Empty placeholder for streaming
-            timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-        };
-        dispatch({ type: 'ADD_MESSAGE', payload: finalMessage });
-
-        const stream = getConcludingMessageStream(settings);
-        for await (const chunk of stream) {
-            dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
-        }
-        
-        dispatch({ type: 'SET_LOADING', payload: false });
-        dispatch({ type: 'NAVIGATE', payload: 'training_ended' });
-        return;
-    }
-
-    try {
         const aiMessage: Message = {
             id: generateId(),
             sender: 'client',
@@ -284,15 +292,19 @@ const App: React.FC = () => {
         for await (const chunk of stream) {
             dispatch({ type: 'UPDATE_LAST_MESSAGE_TEXT', payload: chunk });
         }
-    } catch (error) {
-        console.error("Failed to get AI response:", error);
-        const errorMessage: Message = {
-            id: generateId(),
-            sender: 'client',
-            text: "Er ging iets mis. Probeer het later opnieuw.",
-            timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
-        };
-        dispatch({ type: 'ADD_MESSAGE', payload: errorMessage });
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') {
+            dispatch({ type: 'SET_SYSTEM_BUSY', payload: true });
+        } else {
+            console.error("Failed to get AI response:", error);
+            const errorMessage: Message = {
+                id: generateId(),
+                sender: 'client',
+                text: "Er ging iets mis. Probeer het later opnieuw.",
+                timestamp: new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }),
+            };
+            dispatch({ type: 'ADD_MESSAGE', payload: errorMessage });
+        }
     } finally {
         dispatch({ type: 'SET_LOADING', payload: false });
         dispatch({ type: 'SET_INSTANT_FEEDBACK', payload: null });
@@ -537,6 +549,7 @@ const App: React.FC = () => {
 
   return (
     <>
+      <SystemBusyModal />
       {isMobile && <MobileWarning />}
       <div className={isMobile ? 'blur-sm pointer-events-none' : ''}>
         {renderAppContent()}

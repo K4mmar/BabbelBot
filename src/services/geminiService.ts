@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
 import { getFrameworks, getReports } from './storageService';
@@ -22,11 +23,19 @@ async function callGeminiWithRetry<T>(apiCall: () => Promise<T>, retries = 3, de
   try {
     return await apiCall();
   } catch (error: any) {
-    if (retries > 0 && (error.toString().includes('429') || error.toString().includes('RESOURCE_EXHAUSTED'))) {
+    const errorString = error.toString();
+    const isOverload = errorString.includes('429') || errorString.includes('503') || errorString.includes('RESOURCE_EXHAUSTED');
+    
+    if (retries > 0 && isOverload) {
       console.warn(`API rate limit or resource issue. Retrying in ${delay}ms... (${retries} retries left)`);
       await sleep(delay);
       return callGeminiWithRetry(apiCall, retries - 1, delay * 2);
     }
+    
+    if (isOverload) {
+        throw new Error("SYSTEM_BUSY");
+    }
+    
     console.error("Gemini API call failed after retries or with a non-retriable error:", error);
     throw error;
   }
@@ -56,15 +65,16 @@ export async function* getAIResponseStream(messages: Message[], settings: Settin
       Jouw rol is om te reageren als een echte cliënt. Houd je antwoorden kort en conversationeel. Reageer ALLEEN met de tekst van de cliënt.`;
 
   try {
-    const responseStream = await ai.models.generateContentStream({
+    const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
       model,
       contents: `${chatHistory}\n\nStudent: ${lastUserMessage}`,
       config: { systemInstruction, temperature: 0.8, topP: 0.9 }
-    });
-    for await (const chunk of responseStream) {
+    }));
+    for await (const chunk of (responseStream as any)) {
       yield chunk.text;
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message === 'SYSTEM_BUSY') throw error;
     console.error("Error getting AI response stream:", error);
     yield "Sorry, er is iets misgegaan. Probeer het opnieuw.";
   }
@@ -86,15 +96,16 @@ export async function* getInitialMessageStream(settings: Settings): AsyncGenerat
         Geef een korte, eerste chatbericht van de cliënt om het gesprek te starten, passend bij de casus. Maximaal 2 zinnen. Reageer ALLEEN met de tekst van de cliënt.`;
 
     try {
-        const responseStream = await ai.models.generateContentStream({
+        const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
             model,
             contents: "Start het gesprek.",
             config: { systemInstruction, temperature: 0.9 }
-        });
-        for await (const chunk of responseStream) {
+        }));
+        for await (const chunk of (responseStream as any)) {
             yield chunk.text;
         }
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting initial message stream:", error);
         yield "Hoi, ik weet niet zo goed waar ik moet beginnen...";
     }
@@ -102,8 +113,14 @@ export async function* getInitialMessageStream(settings: Settings): AsyncGenerat
 
 export async function getInitialMessage(settings: Settings): Promise<string> {
     let fullText = "";
-    for await (const chunk of getInitialMessageStream(settings)) {
-        fullText += chunk;
+    // Note: generator handles error internally by yielding fallback, but if it throws SYSTEM_BUSY we need to catch it here or let it bubble
+    const stream = getInitialMessageStream(settings);
+    try {
+        for await (const chunk of stream) {
+            fullText += chunk;
+        }
+    } catch (e) {
+        throw e; 
     }
     return fullText.trim();
 }
@@ -112,15 +129,16 @@ export async function* getConcludingMessageStream(settings: Settings): AsyncGene
     const model = 'gemini-2.5-flash';
     const systemInstruction = `Je bent een AI-cliënt in een rollenspel. De student heeft zojuist de oefening voor de vaardigheid "${settings.skill}" succesvol afgerond. Geef een korte, afsluitende opmerking die past bij de casus en het gesprek op een natuurlijke manier beëindigt. Bijvoorbeeld: "Oké, bedankt voor het luisteren. Dit heeft me wel aan het denken gezet." Reageer ALLEEN met de tekst van de cliënt.`;
     try {
-        const responseStream = await ai.models.generateContentStream({
+        const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
             model,
             contents: "Beëindig het gesprek op een positieve manier.",
             config: { systemInstruction, temperature: 0.7 }
-        });
-        for await (const chunk of responseStream) {
+        }));
+        for await (const chunk of (responseStream as any)) {
             yield chunk.text;
         }
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting concluding message:", error);
         yield "Bedankt voor het gesprek.";
     }
@@ -128,7 +146,7 @@ export async function* getConcludingMessageStream(settings: Settings): AsyncGene
 
 export const getTechniqueFeedback = async (skill: string, clientStatement: string, studentResponse: string): Promise<TechniqueFeedback> => {
     const FEEDBACK_FRAMEWORKS = getFrameworks();
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-3-pro-preview'; // High reasoning model for feedback
     const customFramework = FEEDBACK_FRAMEWORKS[skill] || "Beoordeel de reactie van de student.";
     
     const prompt = `De student oefent de vaardigheid "${skill}".
@@ -154,13 +172,14 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
         }
         throw new Error("Invalid JSON structure");
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting technique feedback:", error);
         return { assessment: "Onvoldoende", feedback: "Kon de feedback niet genereren." };
     }
 };
 
 export const getHulpvraagFeedback = async (messages: Message[], settings: Settings): Promise<string> => {
-    const model = 'gemini-2.5-pro'; // Use a more powerful model for full report analysis
+    const model = 'gemini-3-pro-preview'; // Use powerful model for full report analysis
     const chatHistory = formatChatHistory(messages);
     const customFramework = getFrameworks()["Hulpvraag Verhelderen"];
 
@@ -218,13 +237,14 @@ BELANGRIJK: Begin je antwoord direct met de eerste HTML-tag (<h2>). Voeg GEEN in
         return reportHtml;
 
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error generating hulpvraag feedback report:", error);
         return "<h2>Fout</h2><p>Er is een fout opgetreden bij het genereren van het rapport. Probeer het later opnieuw.</p>";
     }
 };
 
 export async function getChallengeBatch(skill: string, count: number): Promise<string[]> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.5-flash'; // Creative generation is fine on flash
     let prompt: string;
 
     if (skill === "Samenvatten") {
@@ -245,13 +265,14 @@ export async function getChallengeBatch(skill: string, count: number): Promise<s
         }
         throw new Error("Invalid response format");
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting challenge batch:", error);
         return Array(count).fill("Er is iets misgegaan, ik weet niet wat ik moet zeggen.");
     }
 }
 
 export async function getBulkTechniqueFeedback(answers: { skill: string; clientStatement: string; studentResponse: string; }[]): Promise<TestResultDetail[]> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-3-pro-preview'; // Complex analysis for bulk feedback
     const frameworks = getFrameworks();
     const prompt = `Beoordeel de volgende set van interacties uit een eindtoets voor een Social Work student. Voor elke interactie, geef een beoordeling, een korte onderbouwing en een feedbacktip.
     
@@ -292,25 +313,27 @@ Feedback Kader: ${frameworks[ans.skill]}
         }));
         return sanitizedResults.map((res, i) => ({ ...answers[i], ...res }));
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting bulk technique feedback:", error);
         return answers.map(ans => ({ ...ans, assessment: "Onvoldoende", justification: "Fout bij analyse.", feedback: "Kon geen feedback genereren." }));
     }
 }
 
 export async function getCoachingTip(skill: string, clientStatement: string): Promise<string> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-3-pro-preview'; // Better reasoning for helpful tips
     const prompt = `Een student Social Work oefent de vaardigheid "${skill}" en moet reageren op de volgende uitspraak van een cliënt: "${clientStatement}". Geef één korte, concrete tip die de student op weg helpt. Geef geen volledig antwoord, maar een hint. Bijvoorbeeld: "Probeer de emotie te benoemen die je hoort." of "Start je vraag eens met 'Wat' of 'Hoe'."`;
     try {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({ model, contents: prompt }));
         return response.text;
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting coaching tip:", error);
         return "Let goed op de kern van wat de cliënt zegt.";
     }
 }
 
 export async function getAIResponseForTest(conversation: Message[], nextSkill: string): Promise<{ responseText: string; nonVerbalCue: string; }> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.5-flash'; // Chat response needs to be fast
     const chatHistory = formatChatHistory(conversation);
     const prompt = `Dit is een rollenspel voor een Social Work student. De student voert een gesprek en moet als volgende de vaardigheid "${nextSkill}" toepassen.
 Huidig gesprek:
@@ -326,6 +349,7 @@ Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
         }));
         return JSON.parse(response.text.trim());
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting AI response for test:", error);
         return { responseText: "Oké, en verder?", nonVerbalCue: "Kijkt je afwachtend aan." };
     }
@@ -366,7 +390,7 @@ export async function getPersonalizedTestSequence(userKey: string): Promise<stri
 
 
 export async function getDynamicClientResponse(conversation: Message[], scenario: any, nextStepIndex: number, userResponse: string): Promise<{ responseText: string, nonVerbalCue: string }> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.5-flash'; // Chat response needs to be fast
     const chatHistory = formatChatHistory(conversation);
     const nextStep = scenario.steps[nextStepIndex];
     
@@ -385,13 +409,14 @@ Antwoord in JSON: {"responseText": "...", "nonVerbalCue": "..."}`;
         }));
         return JSON.parse(response.text.trim());
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting dynamic client response:", error);
         return { responseText: nextStep.clientStatement, nonVerbalCue: nextStep.nonVerbalCue };
     }
 }
 
 export async function getBulkMiniCaseFeedback(answers: MiniCaseTestAnswer[]): Promise<TestResultDetail[]> {
-    const model = 'gemini-2.5-pro'; // More powerful for nuanced LSD feedback
+    const model = 'gemini-3-pro-preview'; // Use powerful model for nuanced LSD feedback
     const framework = getFrameworks()['Actief luisteren'];
     
     const prompt = `Beoordeel de volgende set van interacties uit een eindtoets waarin de student de LSD-methode (Luisteren, Samenvatten, Doorvragen) moet toepassen in één reactie.
@@ -434,6 +459,7 @@ Student antwoordde: "${ans.studentResponse}"
             feedback: res.feedback,
         }));
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting bulk mini case feedback:", error);
         return answers.map(ans => ({ ...ans, skill: "Actief luisteren (LSD)", assessment: "Onvoldoende", justification: "Fout bij analyse.", feedback: "Kon geen feedback genereren." }));
     }
@@ -467,7 +493,7 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
     try {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-pro-preview', // Higher quality feedback for training
             contents: prompt,
             config: { responseMimeType: "application/json" }
         }));
@@ -480,13 +506,14 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
         }
         throw new Error("Invalid JSON structure");
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting LSD component feedback:", error);
         return { assessment: "Onvoldoende", feedback: "Kon feedback niet genereren." };
     }
 }
 
 export async function getAIResponseForLSDTest(conversation: Message[]): Promise<{ responseText: string, nonVerbalCue: string }> {
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.5-flash'; // Chat response needs to be fast
     const chatHistory = formatChatHistory(conversation);
     const prompt = `Je bent een AI-cliënt in een rollenspel. Een student Social Work voert een verkennend gesprek met je.
 Huidig gesprek:
@@ -502,6 +529,7 @@ Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
         }));
         return JSON.parse(response.text.trim());
     } catch (error) {
+        if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting AI response for LSD test:", error);
         return { responseText: "Ja, dat klopt wel. En dat is soms best lastig.", nonVerbalCue: "Knikt instemmend." };
     }

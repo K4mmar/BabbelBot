@@ -1,12 +1,15 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import type { View } from '../types';
 import { 
     HomeIcon, 
     Cog6ToothIcon,
     ArrowLeftOnRectangleIcon,
-    QuestionMarkCircleIcon 
+    QuestionMarkCircleIcon,
+    LockClosedIcon 
 } from './IconComponents';
 import { useAppContext } from '../AppContext';
+import { ApiKeyModal } from './ApiKeyModal';
 
 const NumberedCircle: React.FC<{ number: number; isActive: boolean }> = ({ number, isActive }) => (
     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
@@ -40,6 +43,7 @@ const SidebarLink: React.FC<{
 export const Sidebar: React.FC = () => {
   const { state, dispatch } = useAppContext();
   const { userName, userRole, currentView } = state;
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   const onNavigate = (view: View) => dispatch({ type: 'NAVIGATE', payload: view });
   const onLogout = () => dispatch({ type: 'LOGOUT' });
@@ -49,6 +53,7 @@ export const Sidebar: React.FC = () => {
   const isOnderdeel3Active = currentView === 'onderdeel3' || currentView === 'training_chat' || currentView === 'instructions' || currentView === 'hulpvraag_chat' || currentView === 'hulpvraag_report' || currentView === 'training_ended';
 
   return (
+    <>
     <aside className="w-64 bg-warm-gray-50 border-r border-warm-gray-200 flex flex-col flex-shrink-0 h-full">
       <div className="p-4 border-b border-warm-gray-200">
         <div className="flex items-center space-x-3">
@@ -102,6 +107,12 @@ export const Sidebar: React.FC = () => {
             isActive={currentView === 'about'}
             onClick={() => onNavigate('about')}
         />
+        <SidebarLink
+            icon={<LockClosedIcon className="w-5 h-5" />}
+            label="API Sleutel"
+            isActive={false}
+            onClick={() => setIsApiKeyModalOpen(true)}
+        />
          {userRole === 'docent' && (
              <SidebarLink
                 icon={<Cog6ToothIcon className="w-5 h-5" />}
@@ -118,5 +129,7 @@ export const Sidebar: React.FC = () => {
         />
       </div>
     </aside>
+    <ApiKeyModal isOpen={isApiKeyModalOpen} onClose={() => setIsApiKeyModalOpen(false)} />
+    </>
   );
 };

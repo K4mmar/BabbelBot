@@ -1,13 +1,20 @@
 
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
-import { getFrameworks, getReports } from './storageService';
+import { getFrameworks, getReports, getCustomApiKey } from './storageService';
 
-if (!process.env.API_KEY) {
-  console.warn("API_KEY environment variable not set. Using a placeholder.");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+// Helper to get the AI client, prioritizing the custom key if set
+const getAI = () => {
+    const customKey = getCustomApiKey();
+    // Fallback to env key, or empty string if neither (though Env should be there)
+    const apiKey = customKey || process.env.API_KEY || '';
+    
+    if (!apiKey) {
+        console.warn("No API Key found (neither custom nor environment).");
+    }
+    
+    return new GoogleGenAI({ apiKey });
+};
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -65,7 +72,7 @@ export async function* getAIResponseStream(messages: Message[], settings: Settin
       Jouw rol is om te reageren als een echte cliënt. Houd je antwoorden kort en conversationeel. Reageer ALLEEN met de tekst van de cliënt.`;
 
   try {
-    const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
+    const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
       model,
       contents: `${chatHistory}\n\nStudent: ${lastUserMessage}`,
       config: { systemInstruction, temperature: 0.8, topP: 0.9 }
@@ -96,7 +103,7 @@ export async function* getInitialMessageStream(settings: Settings): AsyncGenerat
         Geef een korte, eerste chatbericht van de cliënt om het gesprek te starten, passend bij de casus. Maximaal 2 zinnen. Reageer ALLEEN met de tekst van de cliënt.`;
 
     try {
-        const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
+        const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
             model,
             contents: "Start het gesprek.",
             config: { systemInstruction, temperature: 0.9 }
@@ -129,7 +136,7 @@ export async function* getConcludingMessageStream(settings: Settings): AsyncGene
     const model = 'gemini-2.5-flash';
     const systemInstruction = `Je bent een AI-cliënt in een rollenspel. De student heeft zojuist de oefening voor de vaardigheid "${settings.skill}" succesvol afgerond. Geef een korte, afsluitende opmerking die past bij de casus en het gesprek op een natuurlijke manier beëindigt. Bijvoorbeeld: "Oké, bedankt voor het luisteren. Dit heeft me wel aan het denken gezet." Reageer ALLEEN met de tekst van de cliënt.`;
     try {
-        const responseStream = await callGeminiWithRetry(() => ai.models.generateContentStream({
+        const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
             model,
             contents: "Beëindig het gesprek op een positieve manier.",
             config: { systemInstruction, temperature: 0.7 }
@@ -158,7 +165,7 @@ Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. 
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -215,7 +222,7 @@ Het rapport moet de volgende secties bevatten (gebruik <h2>-tags voor de titels)
 BELANGRIJK: Begin je antwoord direct met de eerste HTML-tag (<h2>). Voeg GEEN inleidende zinnen, uitleg of markdown-codeblokken (zoals \`\`\`html) toe. Je antwoord moet uitsluitend pure HTML-code zijn.`;
     
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { temperature: 0.6 }
@@ -254,7 +261,7 @@ export async function getChallengeBatch(skill: string, count: number): Promise<s
     }
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -301,7 +308,7 @@ Feedback Kader: ${frameworks[ans.skill]}
 `).join('\n')}
 `;
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -323,7 +330,7 @@ export async function getCoachingTip(skill: string, clientStatement: string): Pr
     const model = 'gemini-3-pro-preview'; // Better reasoning for helpful tips
     const prompt = `Een student Social Work oefent de vaardigheid "${skill}" en moet reageren op de volgende uitspraak van een cliënt: "${clientStatement}". Geef één korte, concrete tip die de student op weg helpt. Geef geen volledig antwoord, maar een hint. Bijvoorbeeld: "Probeer de emotie te benoemen die je hoort." of "Start je vraag eens met 'Wat' of 'Hoe'."`;
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({ model, contents: prompt }));
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({ model, contents: prompt }));
         return response.text;
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
@@ -342,7 +349,7 @@ Jouw taak: Geef een realistische reactie als cliënt die de student de perfecte 
 Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -404,7 +411,7 @@ Jouw taak: Geef een natuurlijke, korte overgangsreactie die de studentreactie ve
 Antwoord in JSON: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model, contents: prompt, config: { responseMimeType: "application/json" }
         }));
         return JSON.parse(response.text.trim());
@@ -447,7 +454,7 @@ Student antwoordde: "${ans.studentResponse}"
 `).join('\n')}
 `;
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model, contents: prompt, config: { responseMimeType: "application/json" }
         }));
         const results: Omit<TestResultDetail, 'skill' | 'clientStatement' | 'studentResponse'>[] = JSON.parse(response.text.trim());
@@ -492,7 +499,7 @@ Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. 
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model: 'gemini-3-pro-preview', // Higher quality feedback for training
             contents: prompt,
             config: { responseMimeType: "application/json" }
@@ -522,7 +529,7 @@ Jouw taak: Geef een realistische, conversationele reactie. Zorg ervoor dat je re
 Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
-        const response: GenerateContentResponse = await callGeminiWithRetry(() => ai.models.generateContent({
+        const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
             config: { responseMimeType: "application/json" }

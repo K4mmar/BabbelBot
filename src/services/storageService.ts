@@ -3,6 +3,20 @@ import { FEEDBACK_FRAMEWORKS as defaultFrameworks } from '../feedbackFrameworks'
 
 const getReportsStorageKey = (userKey: string) => `babbelbot_reports_${userKey}`;
 const FRAMEWORKS_STORAGE_KEY = 'babbelbot_frameworks';
+const API_KEY_STORAGE_KEY = 'babbelbot_custom_api_key';
+
+// --- API Key Functions ---
+export const getCustomApiKey = (): string | null => {
+    return localStorage.getItem(API_KEY_STORAGE_KEY);
+};
+
+export const saveCustomApiKey = (key: string): void => {
+    localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+};
+
+export const removeCustomApiKey = (): void => {
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+};
 
 // --- Report Functions ---
 export const getReports = (userKey: string): Report[] => {

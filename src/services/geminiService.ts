@@ -1,20 +1,11 @@
-
-
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
 import { getFrameworks, getReports, getCustomApiKey } from './storageService';
 
-// Helper to get the AI client, prioritizing the custom key if set
+// Standard initialization using the environment variable or custom key
 const getAI = () => {
     const customKey = getCustomApiKey();
-    // Fallback to env key, or empty string if neither (though Env should be there)
-    const apiKey = customKey || process.env.API_KEY || '';
-    
-    if (!apiKey) {
-        console.warn("No API Key found (neither custom nor environment).");
-    }
-    
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: customKey || process.env.API_KEY || '' });
 };
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

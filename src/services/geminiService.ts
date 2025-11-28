@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { Message, Settings, Progress, TechniqueFeedback, TestResultDetail, LSDResponse, MiniCaseTestAnswer, Report, SkillAssessmentLevel } from '../types';
 import { getFrameworks, getReports, getCustomApiKey } from './storageService';
@@ -46,6 +47,22 @@ async function callGeminiWithRetry<T>(apiCall: () => Promise<T>, retries = 3, de
     console.error("Gemini API call failed after retries or with a non-retriable error:", error);
     throw error;
   }
+}
+
+// Wrapper specifically for calls that can fallback to a cheaper model
+async function callWithModelFallback<T>(
+    primaryCall: () => Promise<T>, 
+    fallbackCall: () => Promise<T>
+): Promise<T> {
+    try {
+        return await primaryCall();
+    } catch (error: any) {
+        if (error.message === 'SYSTEM_BUSY' || error.toString().includes('429') || error.toString().includes('503')) {
+            console.warn("Primary model overloaded/busy. Switching to fallback model.");
+            return await callGeminiWithRetry(fallbackCall);
+        }
+        throw error;
+    }
 }
 
 function formatChatHistory(messages: Message[]): string {
@@ -153,7 +170,8 @@ export async function* getConcludingMessageStream(settings: Settings): AsyncGene
 
 export const getTechniqueFeedback = async (skill: string, clientStatement: string, studentResponse: string): Promise<TechniqueFeedback> => {
     const FEEDBACK_FRAMEWORKS = getFrameworks();
-    const model = 'gemini-3-pro-preview'; // High reasoning model for feedback
+    const primaryModel = 'gemini-3-pro-preview'; 
+    const fallbackModel = 'gemini-2.5-flash';
     const customFramework = FEEDBACK_FRAMEWORKS[skill] || "Beoordeel de reactie van de student.";
     
     const prompt = `De student oefent de vaardigheid "${skill}".
@@ -164,7 +182,7 @@ ${customFramework}
 Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. De feedback moet een volledige beoordeling zijn op basis van het kader, maar houd het beknopt, maximaal twee alinea's.
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
-    try {
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
@@ -178,6 +196,10 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
             };
         }
         throw new Error("Invalid JSON structure");
+    };
+
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting technique feedback:", error);
@@ -186,7 +208,9 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 };
 
 export const getHulpvraagFeedback = async (messages: Message[], settings: Settings): Promise<string> => {
-    const model = 'gemini-3-pro-preview'; // Use powerful model for full report analysis
+    const primaryModel = 'gemini-3-pro-preview'; 
+    const fallbackModel = 'gemini-2.5-flash';
+    
     const chatHistory = formatChatHistory(messages);
     const customFramework = getFrameworks()["Hulpvraag Verhelderen"];
 
@@ -221,7 +245,7 @@ Het rapport moet de volgende secties bevatten (gebruik <h2>-tags voor de titels)
 
 BELANGRIJK: Begin je antwoord direct met de eerste HTML-tag (<h2>). Voeg GEEN inleidende zinnen, uitleg of markdown-codeblokken (zoals \`\`\`html) toe. Je antwoord moet uitsluitend pure HTML-code zijn.`;
     
-    try {
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
@@ -242,7 +266,10 @@ BELANGRIJK: Begin je antwoord direct met de eerste HTML-tag (<h2>). Voeg GEEN in
         }
         
         return reportHtml;
+    };
 
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error generating hulpvraag feedback report:", error);
@@ -279,7 +306,8 @@ export async function getChallengeBatch(skill: string, count: number): Promise<s
 }
 
 export async function getBulkTechniqueFeedback(answers: { skill: string; clientStatement: string; studentResponse: string; }[]): Promise<TestResultDetail[]> {
-    const model = 'gemini-3-pro-preview'; // Complex analysis for bulk feedback
+    const primaryModel = 'gemini-3-pro-preview';
+    const fallbackModel = 'gemini-2.5-flash';
     const frameworks = getFrameworks();
     const prompt = `Beoordeel de volgende set van interacties uit een eindtoets voor een Social Work student. Voor elke interactie, geef een beoordeling, een korte onderbouwing en een feedbacktip.
     
@@ -307,7 +335,8 @@ Feedback Kader: ${frameworks[ans.skill]}
 ---
 `).join('\n')}
 `;
-    try {
+    
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model,
             contents: prompt,
@@ -319,6 +348,10 @@ Feedback Kader: ${frameworks[ans.skill]}
             assessment: sanitizeAssessment(res.assessment),
         }));
         return sanitizedResults.map((res, i) => ({ ...answers[i], ...res }));
+    };
+
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting bulk technique feedback:", error);
@@ -327,11 +360,17 @@ Feedback Kader: ${frameworks[ans.skill]}
 }
 
 export async function getCoachingTip(skill: string, clientStatement: string): Promise<string> {
-    const model = 'gemini-3-pro-preview'; // Better reasoning for helpful tips
+    const primaryModel = 'gemini-3-pro-preview';
+    const fallbackModel = 'gemini-2.5-flash';
     const prompt = `Een student Social Work oefent de vaardigheid "${skill}" en moet reageren op de volgende uitspraak van een cliënt: "${clientStatement}". Geef één korte, concrete tip die de student op weg helpt. Geef geen volledig antwoord, maar een hint. Bijvoorbeeld: "Probeer de emotie te benoemen die je hoort." of "Start je vraag eens met 'Wat' of 'Hoe'."`;
-    try {
+    
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({ model, contents: prompt }));
         return response.text;
+    };
+
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting coaching tip:", error);
@@ -423,7 +462,8 @@ Antwoord in JSON: {"responseText": "...", "nonVerbalCue": "..."}`;
 }
 
 export async function getBulkMiniCaseFeedback(answers: MiniCaseTestAnswer[]): Promise<TestResultDetail[]> {
-    const model = 'gemini-3-pro-preview'; // Use powerful model for nuanced LSD feedback
+    const primaryModel = 'gemini-3-pro-preview';
+    const fallbackModel = 'gemini-2.5-flash';
     const framework = getFrameworks()['Actief luisteren'];
     
     const prompt = `Beoordeel de volgende set van interacties uit een eindtoets waarin de student de LSD-methode (Luisteren, Samenvatten, Doorvragen) moet toepassen in één reactie.
@@ -453,7 +493,8 @@ Student antwoordde: "${ans.studentResponse}"
 ---
 `).join('\n')}
 `;
-    try {
+    
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
             model, contents: prompt, config: { responseMimeType: "application/json" }
         }));
@@ -465,6 +506,10 @@ Student antwoordde: "${ans.studentResponse}"
             justification: res.justification,
             feedback: res.feedback,
         }));
+    };
+
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting bulk mini case feedback:", error);
@@ -498,9 +543,9 @@ ${framework}
 Geef een beoordeling ("Onvoldoende", "Voldoende", "Goed") en concrete feedback. De feedback moet een volledige beoordeling zijn op basis van het kader, maar houd het beknopt, maximaal twee alinea's.
 Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
 
-    try {
+    const apiCall = (model: string) => async () => {
         const response: GenerateContentResponse = await callGeminiWithRetry(() => getAI().models.generateContent({
-            model: 'gemini-3-pro-preview', // Higher quality feedback for training
+            model,
             contents: prompt,
             config: { responseMimeType: "application/json" }
         }));
@@ -512,6 +557,13 @@ Antwoord in JSON-formaat: {"assessment": "...", "feedback": "..."}`;
             };
         }
         throw new Error("Invalid JSON structure");
+    };
+
+    const primaryModel = 'gemini-3-pro-preview';
+    const fallbackModel = 'gemini-2.5-flash';
+
+    try {
+        return await callWithModelFallback(apiCall(primaryModel), apiCall(fallbackModel));
     } catch (error) {
         if ((error as Error).message === 'SYSTEM_BUSY') throw error;
         console.error("Error getting LSD component feedback:", error);

@@ -70,14 +70,25 @@ export async function* getAIResponseStream(messages: Message[], settings: Settin
     ? `Je bent een AI-cliënt voor een rollenspel. De student heeft de opdracht om jouw hulpvraag te verhelderen.
       - Werkveld: ${settings.field}
       - Casus: ${settings.case}
-      Jouw hulpvraag is in het begin vaag. Reageer natuurlijk en authentiek op de student. Als de student goede (open, verdiepende) vragen stelt, onthul je geleidelijk meer informatie over je situatie, gevoelens en wat je hoopt te bereiken. Als de student sturend is of slechte vragen stelt, word je terughoudender of raak je geïrriteerd. Het doel is een realistisch gesprek. Houd je antwoorden kort en conversationeel.`
+      Jouw hulpvraag is in het begin vaag. Reageer natuurlijk en authentiek op de student. Als de student goede (open, verdiepende) vragen stelt, onthul je geleidelijk meer informatie over je situatie, gevoelens en wat je hoopt te bereiken. Als de student sturend is of slechte vragen stelt, word je terughoudender of raak je geïrriteerd. 
+      
+      BELANGRIJKE FORMAT INSTRUCTIES:
+      - Je bevindt je in een chat-app.
+      - Begin je antwoord DIRECT met de tekst.
+      - Gebruik NOOIT labels zoals 'Cliënt:', '[Naam]:' of 'Antwoord:' voor je zin.
+      - Houd je antwoorden kort en conversationeel.`
     : `Je bent een AI-cliënt voor een rollenspel, ontworpen om Nederlandse HBO Social Work studenten te helpen hun gespreksvaardigheden te oefenen.
       Gedraag je als een cliënt gebaseerd op de volgende context:
       - Werkveld: ${settings.field}
       - Casus: ${settings.case}
       De student oefent de volgende specifieke vaardigheid: "${settings.skill}".
       Het specifieke leerdoel van de student is: "${settings.learningGoal}". Geef antwoorden die de student de mogelijkheid geven om dit leerdoel te behalen.
-      Jouw rol is om te reageren als een echte cliënt. Houd je antwoorden kort en conversationeel. Reageer ALLEEN met de tekst van de cliënt.`;
+      
+      BELANGRIJKE FORMAT INSTRUCTIES:
+      - Je bevindt je in een chat-app.
+      - Begin je antwoord DIRECT met de tekst.
+      - Gebruik NOOIT labels zoals 'Cliënt:', '[Naam]:' of 'Antwoord:' voor je zin.
+      - Houd je antwoorden kort en conversationeel.`;
 
   try {
     const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
@@ -103,12 +114,16 @@ export async function* getInitialMessageStream(settings: Settings): AsyncGenerat
     ? `Je bent een AI-cliënt in een rollenspel voor een HBO Social Work student.
         - Werkveld: ${settings.field}
         - Casus: ${settings.case}
-        De student moet jouw hulpvraag verhelderen. Geef een korte, eerste chatbericht van de cliënt die het gesprek start. De opmerking moet enigszins vaag zijn, zodat de student moet doorvragen. Maximaal 2 zinnen. Reageer ALLEEN met de tekst van de cliënt.`
+        De student moet jouw hulpvraag verhelderen. Geef een korte, eerste chatbericht van de cliënt die het gesprek start. De opmerking moet enigszins vaag zijn, zodat de student moet doorvragen. Maximaal 2 zinnen. 
+        
+        FORMAT: Geef ALLEEN de tekst terug. GEEN 'Cliënt:' of andere labels.`
     : `Je bent een AI-cliënt in een rollenspel voor een HBO Social Work student.
         - Werkveld: ${settings.field}
         - Casus: ${settings.case}
         - De student oefent de vaardigheid: "${settings.skill}" met het leerdoel "${settings.learningGoal}".
-        Geef een korte, eerste chatbericht van de cliënt om het gesprek te starten, passend bij de casus. Maximaal 2 zinnen. Reageer ALLEEN met de tekst van de cliënt.`;
+        Geef een korte, eerste chatbericht van de cliënt om het gesprek te starten, passend bij de casus. Maximaal 2 zinnen.
+        
+        FORMAT: Geef ALLEEN de tekst terug. GEEN 'Cliënt:' of andere labels.`;
 
     try {
         const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
@@ -142,7 +157,9 @@ export async function getInitialMessage(settings: Settings): Promise<string> {
 
 export async function* getConcludingMessageStream(settings: Settings): AsyncGenerator<string> {
     const model = 'gemini-2.5-flash';
-    const systemInstruction = `Je bent een AI-cliënt in een rollenspel. De student heeft zojuist de oefening voor de vaardigheid "${settings.skill}" succesvol afgerond. Geef een korte, afsluitende opmerking die past bij de casus en het gesprek op een natuurlijke manier beëindigt. Bijvoorbeeld: "Oké, bedankt voor het luisteren. Dit heeft me wel aan het denken gezet." Reageer ALLEEN met de tekst van de cliënt.`;
+    const systemInstruction = `Je bent een AI-cliënt in een rollenspel. De student heeft zojuist de oefening voor de vaardigheid "${settings.skill}" succesvol afgerond. Geef een korte, afsluitende opmerking die past bij de casus en het gesprek op een natuurlijke manier beëindigt. Bijvoorbeeld: "Oké, bedankt voor het luisteren. Dit heeft me wel aan het denken gezet." 
+    
+    FORMAT: Geef ALLEEN de tekst terug. GEEN 'Cliënt:' of andere labels.`;
     try {
         const responseStream = await callGeminiWithRetry(() => getAI().models.generateContentStream({
             model,
@@ -376,6 +393,9 @@ export async function getAIResponseForTest(conversation: Message[], nextSkill: s
 Huidig gesprek:
 ${chatHistory}
 Jouw taak: Geef een realistische reactie als cliënt die de student de perfecte gelegenheid geeft om "${nextSkill}" toe te passen. Genereer ook een passend non-verbaal signaal.
+
+BELANGRIJK: Zorg dat het veld "responseText" ALLEEN de gesproken tekst bevat. GEEN labels zoals "Cliënt:" of "[Naam]:" in de tekst.
+
 Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
@@ -438,6 +458,9 @@ ${chatHistory}
 De student heeft zojuist gereageerd op jouw vorige uitspraak. De volgende 'geplande' uitspraak van jou in het script is: "${nextStep.clientStatement}" met als non-verbaal signaal "${nextStep.nonVerbalCue}".
 
 Jouw taak: Geef een natuurlijke, korte overgangsreactie die de studentreactie verbindt met jouw volgende geplande uitspraak. Reageer bijvoorbeeld bevestigend ("Ja, precies, en dat...") en ga dan verder met je script. Gebruik het geplande non-verbale signaal.
+
+BELANGRIJK: Zorg dat het veld "responseText" ALLEEN de gesproken tekst bevat. GEEN labels zoals "Cliënt:" of "[Naam]:" in de tekst.
+
 Antwoord in JSON: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
@@ -569,6 +592,9 @@ export async function getAIResponseForLSDTest(conversation: Message[]): Promise<
 Huidig gesprek:
 ${chatHistory}
 Jouw taak: Geef een realistische, conversationele reactie. Zorg ervoor dat je reactie inhoud en emotie bevat, zodat de student de LSD-methode (Luisteren, Samenvatten, Doorvragen) kan blijven toepassen. Genereer ook een passend non-verbaal signaal.
+
+BELANGRIJK: Zorg dat het veld "responseText" ALLEEN de gesproken tekst bevat. GEEN labels zoals "Cliënt:" of "[Naam]:" in de tekst.
+
 Antwoord in JSON formaat: {"responseText": "...", "nonVerbalCue": "..."}`;
 
     try {
